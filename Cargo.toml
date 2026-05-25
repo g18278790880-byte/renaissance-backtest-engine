@@ -1,0 +1,10 @@
+[package]
+name = "renaissance-backtest-engine"
+version = "0.1.0"
+edition = "2021"
+description = "A mini event-driven trading backtest and order management engine built with Rust."
+license = "MIT"
+
+[dependencies]
+
+[dev-dependencies]
