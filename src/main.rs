@@ -11,7 +11,7 @@ fn main() {
         id: 1,
         symbol: String::from("BTCUSDT"),
         side: Side::Buy,
-        price: 100_000,
+        price: 99_000,
         quantity: 1,
         status: OrderStatus::New,
     };
@@ -27,6 +27,11 @@ fn main() {
 
     order_book.add_order(order1);
     order_book.add_order(order2);
+
+    match order_book.best_bid() {
+        Some(price) => println!("best bid: {}", price),
+        None => println!("no bid orders"),
+    }
 
     println!("{:#?}", order_book);
 }
