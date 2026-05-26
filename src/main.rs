@@ -9,12 +9,12 @@ fn main() {
         side: Side::Buy,
         price: 100_000,
         quantity: 1,
-        status: OrderStatus::New,
+        status: OrderStatus::PartiallyFilled,
     };
 
-    println!("before fill: {:?}", order);
+    println!("new order: {:?}", order);
 
-    order.fill();
+    order.cancel();
 
-    println!("after fill: {:?}", order);
+    println!("after cancel: {:?}", order);
 }

@@ -21,6 +21,18 @@ pub enum OrderStatus {
     Rejected,
 }
 
+impl OrderStatus {
+    pub fn can_cancel(&self) -> bool {
+        match self {
+            OrderStatus::New => true,
+            OrderStatus::PartiallyFilled => true,
+            OrderStatus::Filled => false,
+            OrderStatus::Cancelled => false,
+            OrderStatus::Rejected => false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Order {
     pub id: u64,
@@ -34,6 +46,12 @@ pub struct Order {
 impl Order {
     pub fn fill(&mut self) {
         self.status = OrderStatus::Filled;
+    }
+
+    pub fn cancel(&mut self) {
+        if self.status.can_cancel() {
+            self.status = OrderStatus::Cancelled;
+        }
     }
 }
 
