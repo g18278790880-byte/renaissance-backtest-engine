@@ -1,26 +1,20 @@
 mod model;
 
-use model::{Order, Side, Trade};
+use model::{Order, OrderStatus, Side};
 
 fn main() {
-    let order = Order {
+    let mut order = Order {
         id: 1,
         symbol: String::from("BTCUSDT"),
         side: Side::Buy,
         price: 100_000,
         quantity: 1,
+        status: OrderStatus::New,
     };
 
-    println!("new order: {}", order.symbol);
+    println!("before fill: {:?}", order);
 
-    let trade = Trade {
-        trade_id: 1,
-        order_id: order.id,
-        symbol: order.symbol.clone(),
-        price: 100_000,
-        quantity: 1,
-        timestamp: 1_717_000_000,
-    };
+    order.fill();
 
-    println!("trade executed: {:?}", trade);
+    println!("after fill: {:?}", order);
 }
