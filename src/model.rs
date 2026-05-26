@@ -75,3 +75,43 @@ pub struct Trade {
     pub quantity: u64,
     pub timestamp: u64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_order_can_be_cancelled() {
+        let mut order = Order {
+            id: 1,
+            symbol: String::from("BTCUSDT"),
+            side: Side::Buy,
+            price: 100_000,
+            quantity: 1,
+            status: OrderStatus::New,
+        };
+
+        let result = order.cancel();
+
+        assert!(result.is_ok());
+        assert!(matches!(order.status, OrderStatus::Cancelled));
+    }
+
+    #[test]
+    fn filled_order_cannot_be_cancelled() {
+        let mut order = Order {
+            id: 1,
+            symbol: String::from("BTCUSDT"),
+            side: Side::Buy,
+            price: 100_000,
+            quantity: 1,
+            status: OrderStatus::New,
+        };
+
+        order.fill();
+        let result = order.cancel();
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(OrderError::CannotCancelFilledOrder)));
+    }
+}
