@@ -22,15 +22,22 @@ pub enum OrderStatus {
 }
 
 impl OrderStatus {
-    pub fn can_cancel(&self) -> bool {
+    pub fn cancel_error(&self) -> Option<OrderError> {
         match self {
-            OrderStatus::New => true,
-            OrderStatus::PartiallyFilled => true,
-            OrderStatus::Filled => false,
-            OrderStatus::Cancelled => false,
-            OrderStatus::Rejected => false,
+            OrderStatus::New => None,
+            OrderStatus::PartiallyFilled => None,
+            OrderStatus::Filled => Some(OrderError::CannotCancelFilledOrder),
+            OrderStatus::Cancelled => Some(OrderError::CannotCancelCancelledOrder),
+            OrderStatus::Rejected => Some(OrderError::CannotCancelRejectedOrder),
         }
     }
+}
+
+#[derive(Debug)]
+pub enum OrderError {
+    CannotCancelFilledOrder,
+    CannotCancelCancelledOrder,
+    CannotCancelRejectedOrder,
 }
 
 #[derive(Debug)]
@@ -48,12 +55,13 @@ impl Order {
         self.status = OrderStatus::Filled;
     }
 
-    pub fn cancel(&mut self) -> Result<(), String> {
-        if self.status.can_cancel() {
-            self.status = OrderStatus::Cancelled;
-            Ok(())
-        } else {
-            Err(format!("order {} cannot be cancelled", self.id))
+    pub fn cancel(&mut self) -> Result<(), OrderError> {
+        match self.status.cancel_error() {
+            None => {
+                self.status = OrderStatus::Cancelled;
+                Ok(())
+            }
+            Some(err) => Err(err),
         }
     }
 }

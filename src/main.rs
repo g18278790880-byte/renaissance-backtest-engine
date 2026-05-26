@@ -16,6 +16,6 @@ fn main() {
 
     match order.cancel() {
         Ok(()) => println!("order cancelled: {:?}", order),
-        Err(err) => println!("cancel failed: {}", err),
+        Err(err) => println!("cancel failed: {:?}", err),
     }
 }
