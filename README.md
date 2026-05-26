@@ -1,29 +1,16 @@
 # Renaissance Backtest Engine
 
-> 基于 Rust/Tokio 的事件驱动交易回测与订单管理系统。
+> 一个基于 Rust 的事件驱动交易回测与订单管理引擎，从核心交易模型开始逐步构建。
 
-本项目不是为了“泛学 Rust”，而是为了用 Rust 构建一个迷你版交易系统：能够接收模拟行情、维护订单簿、运行策略、生成订单、模拟成交、执行回测，并逐步补充 API、日志、指标和性能测试。
+Renaissance Backtest Engine 是一个面向交易系统工程实践的 Rust 项目。它从行情、订单、成交、订单簿等基础模型出发，逐步扩展为一个事件驱动的回测引擎，覆盖策略执行、撮合模拟、持仓统计、API、日志、指标和性能测试等能力。
 
----
-
-## 1. 项目背景
-
-量化交易系统的核心问题是：当行情数据持续进入系统后，系统如何快速、稳定、可观测地完成以下流程：
-
-1. 接收行情事件；
-2. 更新订单簿或市场状态；
-3. 驱动策略生成订单；
-4. 经过订单管理与撮合模拟；
-5. 更新持仓、成交和收益；
-6. 输出回测报告、日志与性能指标。
-
-Rust 适合这个项目的原因在于：它强调内存安全、类型建模、零成本抽象和并发可靠性，适合构建性能敏感、可靠性要求高的交易基础设施。
+当前项目处于订单簿模块的早期阶段：已经定义了第一批核心市场与订单模型，支持基础订单状态流转，能够用价格索引保存买盘订单，并查询当前最高买价。
 
 ---
 
-## 2. 项目目标
+## 项目目标
 
-本项目最终目标是实现一个事件驱动的交易系统 mini 版：
+本项目的长期目标是构建一个迷你版交易基础设施：能够回放行情数据、更新市场状态、驱动策略决策、管理订单、模拟成交，并输出回测结果。
 
 ```text
 market-data-simulator
@@ -38,179 +25,172 @@ order-manager
         ↓
 execution-simulator
         ↓
-backtest-report + API + metrics
+portfolio + backtest-report
 ```
 
-最小可运行目标：
+项目重点关注交易系统背后的工程问题：
 
-- 从 CSV 或模拟行情源读取 tick 数据；
-- 定义 `Tick`、`Order`、`Trade`、`Position` 等核心模型；
-- 维护买卖盘订单簿；
-- 实现一个简单策略接口；
-- 运行事件驱动回测；
-- 输出基础回测报告；
-- 使用单元测试验证核心逻辑。
-
-增强目标：
-
-- 使用 Tokio 组织异步任务；
-- 使用 Axum 暴露 HTTP API；
-- 使用 tracing 输出结构化日志；
-- 使用 Criterion 做性能基准测试；
-- 使用 SQLite/SQLx 保存订单、成交和回测结果；
-- 输出 Prometheus 风格的 `/metrics` 指标。
+- 使用 Rust 类型系统建模 `Tick`、`Order`、`Trade`、持仓和订单状态；
+- 维护可预测、可测试的价格档位订单簿；
+- 用单元测试验证订单生命周期和订单簿行为；
+- 通过事件模型连接行情、策略、订单和成交；
+- 在核心逻辑稳定后补充 API、日志、指标、存储和性能测试。
 
 ---
 
-## 3. 岗位匹配点
+## 当前进展
 
-| 岗位要求 | 项目对应能力 |
-| --- | --- |
-| 基于 Rust 的高性能、低时延算法交易系统 | Rust 数据建模、订单簿、事件循环、Benchmark |
-| 数据处理平台、监控运维平台 | CSV/Polars 数据处理、tracing 日志、metrics 指标 |
-| 面向客户的高可用交易工具 | Axum API、状态查询、回测任务触发 |
-| 策略相关回测平台 | 策略 trait、事件回放、撮合模拟、回测报告 |
+已经实现：
 
----
+- Rust 项目骨架，包含 `main.rs`、`model.rs` 和 `order_book.rs`；
+- 核心数据模型：
+  - `Tick`
+  - `Order`
+  - `Trade`
+  - `Side`
+  - `OrderStatus`
+  - `OrderError`
+- 订单生命周期逻辑：
+  - `Order::fill()`
+  - `Order::cancel()`
+  - 对已成交、已取消、已拒绝订单的取消校验；
+- 初版 `OrderBook`：
+  - 使用 `BTreeMap<i64, Vec<Order>>` 按价格档位保存买盘订单；
+  - 支持 `add_order()` 添加订单；
+  - 支持 `best_bid()` 查询当前最高买价；
+- 单元测试覆盖订单取消规则和最高买价查询。
 
-## 4. 系统架构
+当前里程碑：
 
 ```text
-+-----------------------+
-| Market Data Simulator |
-| CSV / Mock Tick Feed  |
-+----------+------------+
-           |
-           v
-+-----------------------+
-| Event Bus             |
-| Tokio mpsc / channel  |
-+----------+------------+
-           |
-           v
-+-----------------------+
-| Strategy Engine       |
-| Strategy Trait        |
-+----------+------------+
-           |
-           v
-+-----------------------+
-| Order Manager         |
-| Order Request/Update  |
-+----------+------------+
-           |
-           v
-+-----------------------+
-| Execution Simulator   |
-| Fill / Fee / Slippage |
-+----------+------------+
-           |
-           v
-+-----------------------+
-| Portfolio & Report    |
-| PnL / Position / JSON |
-+-----------------------+
-```
-
-后续 API 层：
-
-```text
-Axum HTTP API
-├── GET  /health
-├── GET  /orders
-├── GET  /positions
-├── POST /backtests
-├── GET  /backtests/{id}
-└── GET  /metrics
+Module 2：订单簿
+状态：进行中
+最新完成：best_bid() - 查询当前最高买价
 ```
 
 ---
 
-## 5. 核心模块规划
+## 已实现示例
+
+当前可执行程序会构建一个简单的买盘订单簿，并输出最高买价：
+
+```rust
+let mut order_book = OrderBook::new();
+
+order_book.add_order(Order {
+    id: 1,
+    symbol: String::from("BTCUSDT"),
+    side: Side::Buy,
+    price: 99_000,
+    quantity: 1,
+    status: OrderStatus::New,
+});
+
+order_book.add_order(Order {
+    id: 2,
+    symbol: String::from("BTCUSDT"),
+    side: Side::Buy,
+    price: 100_000,
+    quantity: 2,
+    status: OrderStatus::New,
+});
+
+assert_eq!(order_book.best_bid(), Some(100_000));
+```
+
+`best_bid()` 利用 `BTreeMap` 的有序 key，取最后一个价格档位：
+
+```rust
+pub fn best_bid(&self) -> Option<i64> {
+    self.bids.keys().next_back().copied()
+}
+```
+
+当订单簿为空时，函数返回 `None`，避免使用特殊价格作为哨兵值。
+
+---
+
+## 架构路线
+
+计划中的模块结构：
 
 ```text
 src/
-├── main.rs          # 程序入口
-├── model.rs         # Tick / Order / Trade / Position 等核心数据结构
-├── event.rs         # Event 枚举，连接行情、策略、订单和成交
-├── order_book.rs    # 订单簿：add/cancel/best_bid/best_ask/depth
+├── main.rs          # 可执行入口与当前功能演示
+├── model.rs         # Tick / Order / Trade / Position 等核心模型
+├── event.rs         # 连接行情、策略、订单和成交的事件枚举
+├── order_book.rs    # 价格档位订单簿
 ├── strategy.rs      # 策略 trait 与示例策略
-├── execution.rs     # 撮合与成交模拟
-├── backtest.rs      # 回测事件循环与报告生成
+├── execution.rs     # 撮合、手续费、滑点模拟
+├── backtest.rs      # 事件回放循环与回测报告生成
 ├── portfolio.rs     # 持仓、现金、PnL 统计
-├── api.rs           # Axum API，后续实现
-├── metrics.rs       # 指标统计，后续实现
-└── storage.rs       # SQLx/SQLite 存储，后续实现
+├── api.rs           # Axum HTTP API
+├── metrics.rs       # 运行指标与回测指标
+└── storage.rs       # SQLite / SQLx 持久化
 ```
 
-当前 Module 0 只创建项目骨架，不急着实现所有模块。
+计划中的 API：
+
+```text
+GET  /health
+GET  /orders
+GET  /positions
+POST /backtests
+GET  /backtests/{id}
+GET  /metrics
+```
 
 ---
 
-## 6. 技术栈
+## 进度概览
+
+| 模块 | 状态 | 说明 |
+| --- | --- | --- |
+| 项目骨架 | 已完成 | Cargo 项目和基础模块已建立 |
+| 核心模型 | 已完成 | `Tick`、`Order`、`Trade`、方向、状态、错误枚举 |
+| 订单生命周期 | 已完成 | 已实现成交和取消逻辑，并配有单元测试 |
+| 买盘订单簿 | 进行中 | 已实现 `add_order()` 和 `best_bid()` |
+| 卖盘订单簿 | 未开始 | 后续添加 `asks` 和 `best_ask()` |
+| 订单簿内取消订单 | 未开始 | 后续支持从订单簿中移除或更新订单 |
+| 价差与深度查询 | 未开始 | 后续实现 `spread()` 和价格档位深度 |
+| 策略接口 | 未开始 | 后续使用 trait 抽象策略 |
+| 事件循环 | 未开始 | 后续连接行情、订单和成交事件 |
+| 回测引擎 | 未开始 | 后续实现事件回放、撮合模拟和报告输出 |
+| API / 指标 / 存储 | 未开始 | 后续补充工程化能力 |
+
+---
+
+## 技术栈
 
 | 类型 | 技术 |
 | --- | --- |
 | 核心语言 | Rust |
 | 异步运行时 | Tokio |
-| API 服务 | Axum |
+| HTTP API | Axum |
 | 序列化 | Serde / serde_json |
-| 数据处理 | CSV / Polars |
+| 行情数据 | CSV / Polars |
 | 存储 | SQLite / SQLx |
 | 日志 | tracing / tracing-subscriber |
+| 指标 | Prometheus 风格指标 |
 | 性能测试 | Criterion |
 | 测试 | Rust built-in test framework |
 
 ---
 
-## 7. 当前进度
+## 本地运行
 
-- [x] 创建 Rust 项目
-- [x] 编写 README 项目蓝图
-- [ ] 定义核心数据结构
-- [ ] 实现订单簿
-- [ ] 实现策略接口
-- [ ] 实现事件循环
-- [ ] 实现行情模拟器
-- [ ] 实现回测引擎
-- [ ] 接入 Axum API
-- [ ] 接入 tracing 日志
-- [ ] 添加 Criterion benchmark
-
----
-
-## 8. Module 0 任务清单
-
-Module 0 的目标不是写复杂代码，而是回答清楚一个问题：
-
-> 这个项目到底要证明我具备什么能力？
-
-本模块交付物：
-
-- [x] 项目名称；
-- [x] 项目目标；
-- [x] 系统架构；
-- [x] 核心模块；
-- [x] 技术栈；
-- [x] 待实现功能。
-
-完成 Module 0 后，进入 Module 1：Rust 最小语法闭环。
-
----
-
-## 9. 如何运行
-
-当前项目还没有业务逻辑，只用于验证 Rust 工程是否能正常启动。
+运行当前示例：
 
 ```bash
 cargo run
 ```
 
-预期输出：
+当前示例会：
 
-```text
-rust-trading-backtest-engine: Module 0 initialized
-```
+- 创建一个内存中的订单簿；
+- 插入两笔买单；
+- 输出当前最高买价；
+- 输出订单簿的调试信息。
 
 运行测试：
 
@@ -218,72 +198,35 @@ rust-trading-backtest-engine: Module 0 initialized
 cargo test
 ```
 
-格式化代码：
+格式化与检查：
 
 ```bash
 cargo fmt
-```
-
-检查代码：
-
-```bash
 cargo check
 ```
 
 ---
 
-## 10. 后续开发顺序
+## 下一步
 
-建议按照以下顺序推进：
+订单簿模块接下来会继续补齐：
 
-1. Module 1：Rust 最小语法闭环  
-   先实现 `Tick`、`Order`、`Side`、`Trade` 等基础模型。
+1. 添加卖盘存储 `asks`；
+2. 实现 `best_ask()`；
+3. 计算买卖价差 `spread()`；
+4. 支持在订单簿中取消或移除订单；
+5. 提供按价格档位查询深度的能力。
 
-2. Module 2：订单簿  
-   实现 `add_order`、`cancel_order`、`best_bid`、`best_ask`、`spread`。
-
-3. Module 3：策略接口与事件模型  
-   使用 trait 和 enum 解耦行情、策略、订单和成交。
-
-4. Module 4：Tokio 异步消息通道  
-   用 channel 串起行情、策略和执行模块。
-
-5. Module 5-6：行情模拟器与回测引擎  
-   从 CSV 读取 tick，事件回放，生成回测报告。
-
-6. Module 7-10：API、存储、日志和性能测试  
-   让项目从“能跑”升级为“像真实工程”。
+订单簿稳定后，项目会进入事件模型和策略执行模块。
 
 ---
 
-## 11. 简历表达草稿
+## 项目定位
 
-项目名称：
+这个仓库用于展示 Rust 在交易系统类问题中的工程实践：
 
-> 基于 Rust/Tokio 的事件驱动交易回测与订单管理系统
+- 类型驱动的领域建模；
+- 明确、可测试的状态流转；
+- 逐步构建的市场微观结构组件；
+- 从小模块验证开始，逐渐扩展到异步服务、API、指标和存储。
 
-项目描述：
-
-> 面向量化交易系统开发场景，使用 Rust 构建事件驱动的交易回测与订单管理系统，支持行情事件回放、策略信号生成、订单管理、撮合模拟、持仓统计和回测报告输出；后续将接入 Tokio 异步任务、Axum API、tracing 日志和 Criterion 性能测试，用于验证系统在低延迟、高可靠交易基础设施中的工程能力。
-
----
-
-## 12. 学习纪律
-
-本项目遵循 LDLT 循环：
-
-```text
-Learn  学一点
-Do     立刻写一点
-Learn  卡住后再补一点
-Teach  用 README / 注释 / 总结讲出来
-```
-
-关键规则：
-
-- 不先通读全书；
-- 不追求一次性设计完美；
-- 每个模块必须有可运行代码；
-- 每个核心模块必须写测试；
-- 每次完成一个功能，都更新 README；
-- 遇到编译错误，要解释清楚，而不是绕过去。
