@@ -9,12 +9,13 @@ fn main() {
         side: Side::Buy,
         price: 100_000,
         quantity: 1,
-        status: OrderStatus::PartiallyFilled,
+        status: OrderStatus::New,
     };
 
-    println!("new order: {:?}", order);
+    order.fill();
 
-    order.cancel();
-
-    println!("after cancel: {:?}", order);
+    match order.cancel() {
+        Ok(()) => println!("order cancelled: {:?}", order),
+        Err(err) => println!("cancel failed: {}", err),
+    }
 }

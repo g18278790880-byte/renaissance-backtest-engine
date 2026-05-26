@@ -48,9 +48,12 @@ impl Order {
         self.status = OrderStatus::Filled;
     }
 
-    pub fn cancel(&mut self) {
+    pub fn cancel(&mut self) -> Result<(), String> {
         if self.status.can_cancel() {
             self.status = OrderStatus::Cancelled;
+            Ok(())
+        } else {
+            Err(format!("order {} cannot be cancelled", self.id))
         }
     }
 }
