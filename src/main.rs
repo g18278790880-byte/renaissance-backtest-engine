@@ -3,7 +3,9 @@ mod model;
 use model::{Order, OrderStatus, Side};
 
 fn main() {
-    let mut order = Order {
+    let mut orders: Vec<Order> = Vec::new();
+
+    let order = Order {
         id: 1,
         symbol: String::from("BTCUSDT"),
         side: Side::Buy,
@@ -12,10 +14,8 @@ fn main() {
         status: OrderStatus::New,
     };
 
-    order.fill();
+    orders.push(order);
 
-    match order.cancel() {
-        Ok(()) => println!("order cancelled: {:?}", order),
-        Err(err) => println!("cancel failed: {:?}", err),
-    }
+    println!("orders count: {}", orders.len());
+    println!("first order: {:?}", orders[0]);
 }
