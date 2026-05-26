@@ -1,11 +1,13 @@
 mod model;
+mod order_book;
 
 use model::{Order, OrderStatus, Side};
+use order_book::OrderBook;
 
 fn main() {
-    let mut orders: Vec<Order> = Vec::new();
+    let mut order_book = OrderBook::new();
 
-    let order = Order {
+    let order1 = Order {
         id: 1,
         symbol: String::from("BTCUSDT"),
         side: Side::Buy,
@@ -14,8 +16,17 @@ fn main() {
         status: OrderStatus::New,
     };
 
-    orders.push(order);
+    let order2 = Order {
+        id: 2,
+        symbol: String::from("BTCUSDT"),
+        side: Side::Buy,
+        price: 100_000,
+        quantity: 2,
+        status: OrderStatus::New,
+    };
 
-    println!("orders count: {}", orders.len());
-    println!("first order: {:?}", orders[0]);
+    order_book.add_order(order1);
+    order_book.add_order(order2);
+
+    println!("{:#?}", order_book);
 }
