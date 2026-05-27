@@ -4,7 +4,7 @@
 
 Renaissance Backtest Engine 是一个面向交易系统工程实践的 Rust 项目。它从行情、订单、成交、订单簿等基础模型出发，逐步扩展为一个事件驱动的回测引擎，覆盖策略执行、撮合模拟、持仓统计、API、日志、指标和性能测试等能力。
 
-当前项目处于订单簿模块的早期阶段：已经定义了第一批核心市场与订单模型，支持基础订单状态流转，能够用价格索引保存买盘订单，并查询当前最高买价。
+当前项目已完成订单簿模块中的核心查询能力：已经定义了第一批核心市场与订单模型，支持基础订单状态流转，能够按买卖方向保存订单，并查询最优买价、最优卖价、买卖价差和盘口深度。
 
 ---
 
@@ -54,25 +54,29 @@ portfolio + backtest-report
   - `Order::fill()`
   - `Order::cancel()`
   - 对已成交、已取消、已拒绝订单的取消校验；
-- 初版 `OrderBook`：
-  - 使用 `BTreeMap<i64, Vec<Order>>` 按价格档位保存买盘订单；
+- 初版双边 `OrderBook`：
+  - 使用 `BTreeMap<i64, Vec<Order>>` 按价格档位分别保存买盘和卖盘订单；
   - 支持 `add_order()` 添加订单；
   - 支持 `best_bid()` 查询当前最高买价；
-- 单元测试覆盖订单取消规则和最高买价查询。
+  - 支持 `best_ask()` 查询当前最低卖价；
+  - 支持 `spread()` 计算买卖价差；
+  - 支持 `bid_depth()` 聚合买盘深度；
+  - 支持 `ask_depth()` 聚合卖盘深度；
+- 单元测试覆盖订单取消规则、最优买卖价、价差和盘口深度查询。
 
 当前里程碑：
 
 ```text
 Module 2：订单簿
-状态：进行中
-最新完成：best_bid() - 查询当前最高买价
+状态：核心查询能力已完成
+最新完成：add_order() / best_bid() / best_ask() / spread() / bid_depth() / ask_depth()
 ```
 
 ---
 
 ## 已实现示例
 
-当前可执行程序会构建一个简单的买盘订单簿，并输出最高买价：
+当前可执行程序会构建一个简单的双边订单簿，并输出最优买卖价、价差和盘口深度：
 
 ```rust
 let mut order_book = OrderBook::new();
@@ -81,7 +85,7 @@ order_book.add_order(Order {
     id: 1,
     symbol: String::from("BTCUSDT"),
     side: Side::Buy,
-    price: 99_000,
+    price: 100_000,
     quantity: 1,
     status: OrderStatus::New,
 });
@@ -95,18 +99,43 @@ order_book.add_order(Order {
     status: OrderStatus::New,
 });
 
+order_book.add_order(Order {
+    id: 3,
+    symbol: String::from("BTCUSDT"),
+    side: Side::Sell,
+    price: 101_000,
+    quantity: 3,
+    status: OrderStatus::New,
+});
+
 assert_eq!(order_book.best_bid(), Some(100_000));
+assert_eq!(order_book.best_ask(), Some(101_000));
+assert_eq!(order_book.spread(), Some(1_000));
 ```
 
-`best_bid()` 利用 `BTreeMap` 的有序 key，取最后一个价格档位：
+订单簿使用两个 `BTreeMap` 分别保存买盘和卖盘。买盘最优价取最高价格，卖盘最优价取最低价格：
 
 ```rust
 pub fn best_bid(&self) -> Option<i64> {
     self.bids.keys().next_back().copied()
 }
+
+pub fn best_ask(&self) -> Option<i64> {
+    self.asks.keys().next().copied()
+}
 ```
 
-当订单簿为空时，函数返回 `None`，避免使用特殊价格作为哨兵值。
+`spread()` 在买卖两边都存在时返回 `best_ask - best_bid`；任意一边为空时返回 `None`，避免使用特殊价格作为哨兵值。
+
+深度查询会按价格档位聚合同一价格下的订单数量：
+
+```rust
+pub struct DepthLevel {
+    pub price: i64,
+    pub total_quantity: u64,
+    pub order_count: usize,
+}
+```
 
 ---
 
@@ -149,10 +178,11 @@ GET  /metrics
 | 项目骨架 | 已完成 | Cargo 项目和基础模块已建立 |
 | 核心模型 | 已完成 | `Tick`、`Order`、`Trade`、方向、状态、错误枚举 |
 | 订单生命周期 | 已完成 | 已实现成交和取消逻辑，并配有单元测试 |
-| 买盘订单簿 | 进行中 | 已实现 `add_order()` 和 `best_bid()` |
-| 卖盘订单簿 | 未开始 | 后续添加 `asks` 和 `best_ask()` |
+| 双边订单簿 | 已完成 | 已实现买盘 `bids` 和卖盘 `asks` |
+| 最优价查询 | 已完成 | 已实现 `best_bid()` 和 `best_ask()` |
+| 价差查询 | 已完成 | 已实现 `spread()` |
+| 盘口深度查询 | 已完成 | 已实现 `bid_depth()` 和 `ask_depth()` |
 | 订单簿内取消订单 | 未开始 | 后续支持从订单簿中移除或更新订单 |
-| 价差与深度查询 | 未开始 | 后续实现 `spread()` 和价格档位深度 |
 | 策略接口 | 未开始 | 后续使用 trait 抽象策略 |
 | 事件循环 | 未开始 | 后续连接行情、订单和成交事件 |
 | 回测引擎 | 未开始 | 后续实现事件回放、撮合模拟和报告输出 |
@@ -188,9 +218,9 @@ cargo run
 当前示例会：
 
 - 创建一个内存中的订单簿；
-- 插入两笔买单；
-- 输出当前最高买价；
-- 输出订单簿的调试信息。
+- 插入多笔买单和卖单；
+- 输出当前最高买价、最低卖价和买卖价差；
+- 输出买盘和卖盘的价格档位深度。
 
 运行测试：
 
@@ -209,15 +239,14 @@ cargo check
 
 ## 下一步
 
-订单簿模块接下来会继续补齐：
+订单簿模块的核心查询能力已经完成。接下来会继续补齐：
 
-1. 添加卖盘存储 `asks`；
-2. 实现 `best_ask()`；
-3. 计算买卖价差 `spread()`；
-4. 支持在订单簿中取消或移除订单；
-5. 提供按价格档位查询深度的能力。
+1. 支持在订单簿中取消或移除订单；
+2. 为订单簿增加更完整的边界条件测试；
+3. 引入事件模型，连接行情、订单和成交；
+4. 设计策略接口，为后续回测循环做准备。
 
-订单簿稳定后，项目会进入事件模型和策略执行模块。
+订单簿进一步稳定后，项目会进入事件模型和策略执行模块。
 
 ---
 
@@ -229,4 +258,3 @@ cargo check
 - 明确、可测试的状态流转；
 - 逐步构建的市场微观结构组件；
 - 从小模块验证开始，逐渐扩展到异步服务、API、指标和存储。
-
