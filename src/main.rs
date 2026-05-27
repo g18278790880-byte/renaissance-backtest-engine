@@ -30,5 +30,5 @@ fn main() {
 
     println!("best bid: {:?}", order_book.best_bid());
     println!("best ask: {:?}", order_book.best_ask());
-    println!("{:#?}", order_book);
+    println!("spread: {:?}", order_book.spread());
 }

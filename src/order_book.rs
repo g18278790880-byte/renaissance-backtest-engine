@@ -34,6 +34,13 @@ impl OrderBook {
     pub fn best_ask(&self) -> Option<i64> {
         self.asks.keys().next().copied()
     }
+
+    pub fn spread(&self) -> Option<i64> {
+        match (self.best_bid(), self.best_ask()) {
+            (Some(bid), Some(ask)) => Some(ask - bid),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -78,5 +85,24 @@ mod tests {
 
         assert_eq!(order_book.best_bid(), None);
         assert_eq!(order_book.best_ask(), None);
+    }
+
+    #[test]
+    fn spread_returns_best_ask_minus_best_bid() {
+        let mut order_book = OrderBook::new();
+
+        order_book.add_order(create_order(1, Side::Buy, 100_000));
+        order_book.add_order(create_order(2, Side::Sell, 101_000));
+
+        assert_eq!(order_book.spread(), Some(1_000));
+    }
+
+    #[test]
+    fn spread_returns_none_when_one_side_is_missing() {
+        let mut order_book = OrderBook::new();
+
+        order_book.add_order(create_order(1, Side::Buy, 100_000));
+
+        assert_eq!(order_book.spread(), None);
     }
 }
