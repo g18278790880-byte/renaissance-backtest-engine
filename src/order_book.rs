@@ -288,8 +288,12 @@ mod tests {
     fn best_bid_returns_highest_buy_price() {
         let mut order_book = OrderBook::new();
 
-        order_book.add_order(create_order(1, Side::Buy, 99_000));
-        order_book.add_order(create_order(2, Side::Buy, 100_000));
+        order_book
+            .add_order(create_order(1, Side::Buy, 99_000))
+            .unwrap();
+        order_book
+            .add_order(create_order(2, Side::Buy, 100_000))
+            .unwrap();
 
         assert_eq!(order_book.best_bid(), Some(100_000));
     }
@@ -298,8 +302,12 @@ mod tests {
     fn best_ask_returns_lowest_sell_price() {
         let mut order_book = OrderBook::new();
 
-        order_book.add_order(create_order(1, Side::Sell, 102_000));
-        order_book.add_order(create_order(2, Side::Sell, 101_000));
+        order_book
+            .add_order(create_order(1, Side::Sell, 102_000))
+            .unwrap();
+        order_book
+            .add_order(create_order(2, Side::Sell, 101_000))
+            .unwrap();
 
         assert_eq!(order_book.best_ask(), Some(101_000));
     }
@@ -316,8 +324,12 @@ mod tests {
     fn spread_returns_best_ask_minus_best_bid() {
         let mut order_book = OrderBook::new();
 
-        order_book.add_order(create_order(1, Side::Buy, 100_000));
-        order_book.add_order(create_order(2, Side::Sell, 101_000));
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+        order_book
+            .add_order(create_order(2, Side::Sell, 101_000))
+            .unwrap();
 
         assert_eq!(order_book.spread(), Some(1_000));
     }
@@ -326,7 +338,9 @@ mod tests {
     fn spread_returns_none_when_one_side_is_missing() {
         let mut order_book = OrderBook::new();
 
-        order_book.add_order(create_order(1, Side::Buy, 100_000));
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
 
         assert_eq!(order_book.spread(), None);
     }
@@ -346,9 +360,15 @@ mod tests {
     fn bid_depth_returns_prices_from_high_to_low() {
         let mut order_book = OrderBook::new();
 
-        order_book.add_order(create_order_with_quantity(1, Side::Buy, 99_000, 5));
-        order_book.add_order(create_order_with_quantity(2, Side::Buy, 100_000, 1));
-        order_book.add_order(create_order_with_quantity(3, Side::Buy, 100_000, 2));
+        order_book
+            .add_order(create_order_with_quantity(1, Side::Buy, 99_000, 5))
+            .unwrap();
+        order_book
+            .add_order(create_order_with_quantity(2, Side::Buy, 100_000, 1))
+            .unwrap();
+        order_book
+            .add_order(create_order_with_quantity(3, Side::Buy, 100_000, 2))
+            .unwrap();
 
         assert_eq!(
             order_book.bid_depth(2),
@@ -371,8 +391,12 @@ mod tests {
     fn ask_depth_returns_prices_from_low_to_high() {
         let mut order_book = OrderBook::new();
 
-        order_book.add_order(create_order_with_quantity(1, Side::Sell, 102_000, 4));
-        order_book.add_order(create_order_with_quantity(2, Side::Sell, 101_000, 3));
+        order_book
+            .add_order(create_order_with_quantity(1, Side::Sell, 102_000, 4))
+            .unwrap();
+        order_book
+            .add_order(create_order_with_quantity(2, Side::Sell, 101_000, 3))
+            .unwrap();
 
         assert_eq!(
             order_book.ask_depth(2),
@@ -395,8 +419,12 @@ mod tests {
     fn cancel_order_removes_order_from_order_book() {
         let mut order_book = OrderBook::new();
 
-        order_book.add_order(create_order(1, Side::Buy, 100_000));
-        order_book.add_order(create_order(2, Side::Buy, 99_000));
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+        order_book
+            .add_order(create_order(2, Side::Buy, 99_000))
+            .unwrap();
 
         let result = order_book.cancel_order(1);
 

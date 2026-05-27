@@ -26,18 +26,18 @@ impl OrderStatus {
         match self {
             OrderStatus::New => None,
             OrderStatus::PartiallyFilled => None,
-            OrderStatus::Filled => Some(OrderError::CannotCancelFilledOrder),
-            OrderStatus::Cancelled => Some(OrderError::CannotCancelCancelledOrder),
-            OrderStatus::Rejected => Some(OrderError::CannotCancelRejectedOrder),
+            OrderStatus::Filled => Some(OrderError::Filled),
+            OrderStatus::Cancelled => Some(OrderError::Cancelled),
+            OrderStatus::Rejected => Some(OrderError::Rejected),
         }
     }
 }
 
 #[derive(Debug)]
 pub enum OrderError {
-    CannotCancelFilledOrder,
-    CannotCancelCancelledOrder,
-    CannotCancelRejectedOrder,
+    Filled,
+    Cancelled,
+    Rejected,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -113,6 +113,6 @@ mod tests {
         let result = order.cancel();
 
         assert!(result.is_err());
-        assert!(matches!(result, Err(OrderError::CannotCancelFilledOrder)));
+        assert!(matches!(result, Err(OrderError::Filled)));
     }
 }
