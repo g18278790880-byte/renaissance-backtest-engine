@@ -77,6 +77,36 @@ pub struct Trade {
     pub timestamp: u64,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct OrderRequest {
+    pub symbol: String,
+    pub side: Side,
+    pub price: i64,
+    pub quantity: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct OrderUpdate {
+    pub order_id: u64,
+    pub status: OrderStatus,
+    pub filled_quantity: u64,
+    pub remaining_quantity: u64,
+    pub timestamp: u64,
+}
+
+impl OrderRequest {
+    pub fn into_order(self, order_id: u64) -> Order {
+        Order {
+            id: order_id,
+            symbol: self.symbol,
+            side: self.side,
+            price: self.price,
+            quantity: self.quantity,
+            status: OrderStatus::New,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +144,24 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result, Err(OrderError::Filled)));
+    }
+
+    #[test]
+    fn order_request_can_be_converted_into_order() {
+        let request = OrderRequest {
+            symbol: String::from("BTCUSDT"),
+            side: Side::Buy,
+            price: 100_000,
+            quantity: 1,
+        };
+
+        let order = request.into_order(1);
+
+        assert_eq!(order.id, 1);
+        assert_eq!(order.symbol, "BTCUSDT");
+        assert_eq!(order.side, Side::Buy);
+        assert_eq!(order.price, 100_000);
+        assert_eq!(order.quantity, 1);
+        assert_eq!(order.status, OrderStatus::New);
     }
 }
