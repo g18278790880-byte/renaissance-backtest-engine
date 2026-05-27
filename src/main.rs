@@ -18,13 +18,35 @@ fn main() {
         })
         .unwrap();
 
-    match order_book.get_order(1) {
-        Some(order) => println!("found order: {:?}", order),
-        None => println!("order not found"),
+    order_book
+        .add_order(Order {
+            id: 2,
+            symbol: String::from("BTCUSDT"),
+            side: Side::Buy,
+            price: 100_000,
+            quantity: 2,
+            status: OrderStatus::New,
+        })
+        .unwrap();
+
+    order_book
+        .add_order(Order {
+            id: 3,
+            symbol: String::from("BTCUSDT"),
+            side: Side::Sell,
+            price: 101_000,
+            quantity: 1,
+            status: OrderStatus::New,
+        })
+        .unwrap();
+
+    match order_book.best_bid_order() {
+        Some(order) => println!("best bid order: {:?}", order),
+        None => println!("no bid order"),
     }
 
-    match order_book.get_order(999) {
-        Some(order) => println!("found order: {:?}", order),
-        None => println!("order 999 not found"),
+    match order_book.best_ask_order() {
+        Some(order) => println!("best ask order: {:?}", order),
+        None => println!("no ask order"),
     }
 }

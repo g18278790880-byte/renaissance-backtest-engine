@@ -158,6 +158,18 @@ impl OrderBook {
 
         orders.iter().find(|order| order.id == order_id)
     }
+
+    pub fn best_bid_order(&self) -> Option<&Order> {
+        let best_bid = self.best_bid()?;
+
+        self.bids.get(&best_bid)?.first()
+    }
+
+    pub fn best_ask_order(&self) -> Option<&Order> {
+        let best_ask = self.best_ask()?;
+
+        self.asks.get(&best_ask)?.first()
+    }
 }
 
 #[cfg(test)]
@@ -416,5 +428,61 @@ mod tests {
         order_book.cancel_order(1).unwrap();
 
         assert!(order_book.get_order(1).is_none());
+    }
+
+    #[test]
+    fn best_bid_order_returns_first_order_at_highest_bid_price() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        order_book
+            .add_order(create_order(2, Side::Buy, 100_000))
+            .unwrap();
+
+        order_book
+            .add_order(create_order(3, Side::Buy, 99_000))
+            .unwrap();
+
+        let best_order = order_book.best_bid_order().unwrap();
+
+        assert_eq!(best_order.id, 1);
+    }
+
+    #[test]
+    fn best_ask_order_returns_first_order_at_lowest_ask_price() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Sell, 102_000))
+            .unwrap();
+
+        order_book
+            .add_order(create_order(2, Side::Sell, 101_000))
+            .unwrap();
+
+        order_book
+            .add_order(create_order(3, Side::Sell, 101_000))
+            .unwrap();
+
+        let best_order = order_book.best_ask_order().unwrap();
+
+        assert_eq!(best_order.id, 2);
+    }
+
+    #[test]
+    fn best_bid_order_returns_none_when_no_bid_exists() {
+        let order_book = OrderBook::new();
+
+        assert!(order_book.best_bid_order().is_none());
+    }
+
+    #[test]
+    fn best_ask_order_returns_none_when_no_ask_exists() {
+        let order_book = OrderBook::new();
+
+        assert!(order_book.best_ask_order().is_none());
     }
 }
