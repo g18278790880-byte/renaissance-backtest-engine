@@ -4,7 +4,7 @@
 
 Renaissance Backtest Engine 是一个面向交易系统工程实践的 Rust 项目。它从行情、订单、成交、订单簿等基础模型出发，逐步扩展为一个事件驱动的回测引擎，覆盖策略执行、撮合模拟、持仓统计、API、日志、指标和性能测试等能力。
 
-当前项目已完成订单簿模块中的核心查询能力：已经定义了第一批核心市场与订单模型，支持基础订单状态流转，能够按买卖方向保存订单，并查询最优买价、最优卖价、买卖价差和盘口深度。
+当前项目已完成订单簿模块中的核心查询、订单索引、取消订单和基础撮合能力：已经定义了第一批核心市场与订单模型，支持基础订单状态流转，能够按买卖方向保存订单，查询最优价和盘口深度，并在买卖价格交叉时生成成交记录。
 
 ---
 
@@ -56,61 +56,64 @@ portfolio + backtest-report
   - 对已成交、已取消、已拒绝订单的取消校验；
 - 初版双边 `OrderBook`：
   - 使用 `BTreeMap<i64, Vec<Order>>` 按价格档位分别保存买盘和卖盘订单；
-  - 支持 `add_order()` 添加订单；
+  - 使用 `HashMap<u64, OrderLocation>` 维护订单 ID 到盘口位置的索引；
+  - 支持 `add_order()` 添加订单，并拒绝重复订单 ID；
+  - 支持 `cancel_order()` 从订单簿中取消并移除订单；
   - 支持 `best_bid()` 查询当前最高买价；
   - 支持 `best_ask()` 查询当前最低卖价；
+  - 支持 `best_bid_order()` 和 `best_ask_order()` 查询最优价格上的第一笔订单；
   - 支持 `spread()` 计算买卖价差；
   - 支持 `bid_depth()` 聚合买盘深度；
   - 支持 `ask_depth()` 聚合卖盘深度；
-- 单元测试覆盖订单取消规则、最优买卖价、价差和盘口深度查询。
+  - 支持 `match_best_orders()` 撮合一组最优买卖订单；
+  - 支持 `match_orders()` 连续撮合，直到价格不再交叉；
+- 测试代码已从 `order_book.rs` 拆分到 `src/order_book/tests.rs`，并按行为整理为添加订单、盘口查询、取消订单、索引查询和撮合测试；
+- 已修复非 `dead_code` 类 warning：包括 Clippy 枚举命名提示，以及测试中未处理 `Result` 的问题；
+- 单元测试覆盖订单取消规则、最优买卖价、价差、盘口深度、订单索引和基础撮合。
 
 当前里程碑：
 
 ```text
 Module 2：订单簿
-状态：核心查询能力已完成
-最新完成：add_order() / best_bid() / best_ask() / spread() / bid_depth() / ask_depth()
+状态：核心订单簿能力已完成，基础撮合已接入
+最新完成：cancel_order() / best_bid_order() / best_ask_order() / match_best_orders() / match_orders() / 测试拆分与整理
 ```
 
 ---
 
 ## 已实现示例
 
-当前可执行程序会构建一个简单的双边订单簿，并输出最优买卖价、价差和盘口深度：
+当前可执行程序会构建一个简单的双边订单簿，并在买卖价格交叉时执行基础撮合：
 
 ```rust
 let mut order_book = OrderBook::new();
 
-order_book.add_order(Order {
-    id: 1,
-    symbol: String::from("BTCUSDT"),
-    side: Side::Buy,
-    price: 100_000,
-    quantity: 1,
-    status: OrderStatus::New,
-});
+order_book
+    .add_order(Order {
+        id: 1,
+        symbol: String::from("BTCUSDT"),
+        side: Side::Buy,
+        price: 100_000,
+        quantity: 5,
+        status: OrderStatus::New,
+    })
+    .unwrap();
 
-order_book.add_order(Order {
-    id: 2,
-    symbol: String::from("BTCUSDT"),
-    side: Side::Buy,
-    price: 100_000,
-    quantity: 2,
-    status: OrderStatus::New,
-});
+order_book
+    .add_order(Order {
+        id: 2,
+        symbol: String::from("BTCUSDT"),
+        side: Side::Sell,
+        price: 99_000,
+        quantity: 2,
+        status: OrderStatus::New,
+    })
+    .unwrap();
 
-order_book.add_order(Order {
-    id: 3,
-    symbol: String::from("BTCUSDT"),
-    side: Side::Sell,
-    price: 101_000,
-    quantity: 3,
-    status: OrderStatus::New,
-});
+let trades = order_book.match_orders(1, 1_717_000_000);
 
-assert_eq!(order_book.best_bid(), Some(100_000));
-assert_eq!(order_book.best_ask(), Some(101_000));
-assert_eq!(order_book.spread(), Some(1_000));
+assert_eq!(trades.len(), 1);
+assert_eq!(trades[0].quantity, 2);
 ```
 
 订单簿使用两个 `BTreeMap` 分别保存买盘和卖盘。买盘最优价取最高价格，卖盘最优价取最低价格：
@@ -137,6 +140,8 @@ pub struct DepthLevel {
 }
 ```
 
+撮合逻辑当前采用简化版本：当最高买价大于或等于最低卖价时，以卖方价格生成成交，并根据成交数量更新订单状态；完全成交的订单会从订单簿和订单索引中移除。
+
 ---
 
 ## 架构路线
@@ -156,6 +161,18 @@ src/
 ├── api.rs           # Axum HTTP API
 ├── metrics.rs       # 运行指标与回测指标
 └── storage.rs       # SQLite / SQLx 持久化
+```
+
+当前订单簿测试结构：
+
+```text
+src/order_book/
+└── tests.rs
+    ├── add_order_tests
+    ├── quote_tests
+    ├── cancel_tests
+    ├── lookup_tests
+    └── matching_tests
 ```
 
 计划中的 API：
@@ -182,7 +199,11 @@ GET  /metrics
 | 最优价查询 | 已完成 | 已实现 `best_bid()` 和 `best_ask()` |
 | 价差查询 | 已完成 | 已实现 `spread()` |
 | 盘口深度查询 | 已完成 | 已实现 `bid_depth()` 和 `ask_depth()` |
-| 订单簿内取消订单 | 未开始 | 后续支持从订单簿中移除或更新订单 |
+| 订单簿内取消订单 | 已完成 | 已实现 `cancel_order()` 和订单索引维护 |
+| 最优订单查询 | 已完成 | 已实现 `best_bid_order()` 和 `best_ask_order()` |
+| 基础撮合 | 已完成 | 已实现 `match_best_orders()` 和 `match_orders()` |
+| 测试拆分与整理 | 已完成 | 订单簿测试已拆到 `src/order_book/tests.rs` 并按行为分组 |
+| Warning 整理 | 已完成 | 已修复非 `dead_code` 类 warning |
 | 策略接口 | 未开始 | 后续使用 trait 抽象策略 |
 | 事件循环 | 未开始 | 后续连接行情、订单和成交事件 |
 | 回测引擎 | 未开始 | 后续实现事件回放、撮合模拟和报告输出 |
@@ -219,8 +240,8 @@ cargo run
 
 - 创建一个内存中的订单簿；
 - 插入多笔买单和卖单；
-- 输出当前最高买价、最低卖价和买卖价差；
-- 输出买盘和卖盘的价格档位深度。
+- 执行基础订单撮合；
+- 输出成交记录、剩余订单数量和当前最优买卖价。
 
 运行测试：
 
@@ -239,10 +260,10 @@ cargo check
 
 ## 下一步
 
-订单簿模块的核心查询能力已经完成。接下来会继续补齐：
+订单簿模块的核心查询、取消订单、基础撮合和测试整理已经完成。接下来会继续补齐：
 
-1. 支持在订单簿中取消或移除订单；
-2. 为订单簿增加更完整的边界条件测试；
+1. 为撮合逻辑增加更完整的边界条件测试；
+2. 梳理成交价格、部分成交、订单状态更新等撮合规则；
 3. 引入事件模型，连接行情、订单和成交；
 4. 设计策略接口，为后续回测循环做准备。
 
