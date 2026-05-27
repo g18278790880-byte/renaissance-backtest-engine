@@ -6,7 +6,7 @@ pub struct Tick {
     pub timestamp: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Buy,
     Sell,

@@ -7,31 +7,28 @@ use order_book::OrderBook;
 fn main() {
     let mut order_book = OrderBook::new();
 
-    let order1 = Order {
+    let buy_order = Order {
         id: 1,
         symbol: String::from("BTCUSDT"),
         side: Side::Buy,
-        price: 99_000,
+        price: 100_000,
         quantity: 1,
         status: OrderStatus::New,
     };
 
-    let order2 = Order {
+    let sell_order = Order {
         id: 2,
         symbol: String::from("BTCUSDT"),
-        side: Side::Buy,
-        price: 100_000,
-        quantity: 2,
+        side: Side::Sell,
+        price: 101_000,
+        quantity: 1,
         status: OrderStatus::New,
     };
 
-    order_book.add_order(order1);
-    order_book.add_order(order2);
+    order_book.add_order(buy_order);
+    order_book.add_order(sell_order);
 
-    match order_book.best_bid() {
-        Some(price) => println!("best bid: {}", price),
-        None => println!("no bid orders"),
-    }
-
+    println!("best bid: {:?}", order_book.best_bid());
+    println!("best ask: {:?}", order_book.best_ask());
     println!("{:#?}", order_book);
 }
