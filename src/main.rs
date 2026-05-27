@@ -1,7 +1,9 @@
+mod engine;
 mod event;
 mod model;
 mod order_book;
 
+use engine::handle_event;
 use event::Event;
 use model::{OrderRequest, Side, Tick};
 
@@ -22,7 +24,6 @@ fn main() {
     ];
 
     for event in &events {
-        println!("event type: {}", event.event_type());
-        println!("event detail: {:?}", event);
+        handle_event(event);
     }
 }
