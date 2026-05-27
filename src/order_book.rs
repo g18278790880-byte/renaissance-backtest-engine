@@ -141,6 +141,10 @@ impl OrderBook {
     pub fn ask_order_count(&self) -> usize {
         self.asks.values().map(|orders| orders.len()).sum()
     }
+
+    pub fn contains_order(&self, order_id: u64) -> bool {
+        self.order_index.contains_key(&order_id)
+    }
 }
 
 #[cfg(test)]
@@ -334,5 +338,36 @@ mod tests {
 
         assert_eq!(order_book.order_count(), 1);
         assert_eq!(order_book.bid_order_count(), 1);
+    }
+
+    #[test]
+    fn contains_order_returns_true_when_order_exists() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        assert!(order_book.contains_order(1));
+    }
+
+    #[test]
+    fn contains_order_returns_false_when_order_does_not_exist() {
+        let order_book = OrderBook::new();
+
+        assert!(!order_book.contains_order(999));
+    }
+
+    #[test]
+    fn contains_order_returns_false_after_order_is_cancelled() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        order_book.cancel_order(1).unwrap();
+
+        assert!(!order_book.contains_order(1));
     }
 }
