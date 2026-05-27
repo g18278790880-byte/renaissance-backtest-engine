@@ -20,42 +20,17 @@ fn main() {
         id: 2,
         symbol: String::from("BTCUSDT"),
         side: Side::Buy,
-        price: 100_000,
-        quantity: 2,
-        status: OrderStatus::New,
-    });
-
-    order_book.add_order(Order {
-        id: 3,
-        symbol: String::from("BTCUSDT"),
-        side: Side::Buy,
         price: 99_000,
-        quantity: 5,
+        quantity: 1,
         status: OrderStatus::New,
     });
 
-    order_book.add_order(Order {
-        id: 4,
-        symbol: String::from("BTCUSDT"),
-        side: Side::Sell,
-        price: 101_000,
-        quantity: 3,
-        status: OrderStatus::New,
-    });
+    println!("before cancel best bid: {:?}", order_book.best_bid());
 
-    order_book.add_order(Order {
-        id: 5,
-        symbol: String::from("BTCUSDT"),
-        side: Side::Sell,
-        price: 102_000,
-        quantity: 4,
-        status: OrderStatus::New,
-    });
+    match order_book.cancel_order(1) {
+        Ok(order) => println!("cancelled order: {:?}", order),
+        Err(err) => println!("cancel failed: {:?}", err),
+    }
 
-    println!("best bid: {:?}", order_book.best_bid());
-    println!("best ask: {:?}", order_book.best_ask());
-    println!("spread: {:?}", order_book.spread());
-
-    println!("bid depth: {:#?}", order_book.bid_depth(5));
-    println!("ask depth: {:#?}", order_book.ask_depth(5));
+    println!("after cancel best bid: {:?}", order_book.best_bid());
 }

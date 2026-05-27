@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::model::{Order, Side};
 
@@ -9,10 +9,22 @@ pub struct DepthLevel {
     pub order_count: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OrderLocation {
+    pub side: Side,
+    pub price: i64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum OrderBookError {
+    OrderNotFound(u64),
+}
+
 #[derive(Debug)]
 pub struct OrderBook {
-    pub bids: BTreeMap<i64, Vec<Order>>,
-    pub asks: BTreeMap<i64, Vec<Order>>,
+    bids: BTreeMap<i64, Vec<Order>>,
+    asks: BTreeMap<i64, Vec<Order>>,
+    order_index: HashMap<u64, OrderLocation>,
 }
 
 impl OrderBook {
@@ -20,10 +32,18 @@ impl OrderBook {
         Self {
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
+            order_index: HashMap::new(),
         }
     }
 
     pub fn add_order(&mut self, order: Order) {
+        let location = OrderLocation {
+            side: order.side,
+            price: order.price,
+        };
+
+        self.order_index.insert(order.id, location);
+
         match order.side {
             Side::Buy => {
                 self.bids.entry(order.price).or_default().push(order);
@@ -32,6 +52,35 @@ impl OrderBook {
                 self.asks.entry(order.price).or_default().push(order);
             }
         }
+    }
+
+    pub fn cancel_order(&mut self, order_id: u64) -> Result<Order, OrderBookError> {
+        let location = self
+            .order_index
+            .remove(&order_id)
+            .ok_or(OrderBookError::OrderNotFound(order_id))?;
+
+        let book_side = match location.side {
+            Side::Buy => &mut self.bids,
+            Side::Sell => &mut self.asks,
+        };
+
+        let orders = book_side
+            .get_mut(&location.price)
+            .ok_or(OrderBookError::OrderNotFound(order_id))?;
+
+        let position = orders
+            .iter()
+            .position(|order| order.id == order_id)
+            .ok_or(OrderBookError::OrderNotFound(order_id))?;
+
+        let cancelled_order = orders.remove(position);
+
+        if orders.is_empty() {
+            book_side.remove(&location.price);
+        }
+
+        Ok(cancelled_order)
     }
 
     pub fn best_bid(&self) -> Option<i64> {
@@ -196,5 +245,27 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn cancel_order_removes_order_from_order_book() {
+        let mut order_book = OrderBook::new();
+
+        order_book.add_order(create_order(1, Side::Buy, 100_000));
+        order_book.add_order(create_order(2, Side::Buy, 99_000));
+
+        let result = order_book.cancel_order(1);
+
+        assert!(result.is_ok());
+        assert_eq!(order_book.best_bid(), Some(99_000));
+    }
+
+    #[test]
+    fn cancel_order_returns_error_when_order_does_not_exist() {
+        let mut order_book = OrderBook::new();
+
+        let result = order_book.cancel_order(999);
+
+        assert_eq!(result, Err(OrderBookError::OrderNotFound(999)));
     }
 }

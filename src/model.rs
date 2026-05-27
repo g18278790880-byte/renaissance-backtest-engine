@@ -12,7 +12,7 @@ pub enum Side {
     Sell,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum OrderStatus {
     New,
     PartiallyFilled,
@@ -40,7 +40,7 @@ pub enum OrderError {
     CannotCancelRejectedOrder,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Order {
     pub id: u64,
     pub symbol: String,
