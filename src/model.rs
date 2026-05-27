@@ -1,11 +1,3 @@
-#[derive(Debug)]
-pub struct Tick {
-    pub symbol: String,
-    pub price: i64,
-    pub quantity: u64,
-    pub timestamp: u64,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Buy,
@@ -40,6 +32,35 @@ pub enum OrderError {
     Rejected,
 }
 
+#[derive(Debug)]
+pub struct Tick {
+    pub symbol: String,
+    pub price: i64,
+    pub quantity: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct OrderRequest {
+    pub symbol: String,
+    pub side: Side,
+    pub price: i64,
+    pub quantity: u64,
+}
+
+impl OrderRequest {
+    pub fn into_order(self, order_id: u64) -> Order {
+        Order {
+            id: order_id,
+            symbol: self.symbol,
+            side: self.side,
+            price: self.price,
+            quantity: self.quantity,
+            status: OrderStatus::New,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Order {
     pub id: u64,
@@ -67,6 +88,15 @@ impl Order {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct OrderUpdate {
+    pub order_id: u64,
+    pub status: OrderStatus,
+    pub filled_quantity: u64,
+    pub remaining_quantity: u64,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Trade {
     pub trade_id: u64,
     pub buy_order_id: u64,
@@ -77,50 +107,24 @@ pub struct Trade {
     pub timestamp: u64,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct OrderRequest {
-    pub symbol: String,
-    pub side: Side,
-    pub price: i64,
-    pub quantity: u64,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct OrderUpdate {
-    pub order_id: u64,
-    pub status: OrderStatus,
-    pub filled_quantity: u64,
-    pub remaining_quantity: u64,
-    pub timestamp: u64,
-}
-
-impl OrderRequest {
-    pub fn into_order(self, order_id: u64) -> Order {
-        Order {
-            id: order_id,
-            symbol: self.symbol,
-            side: self.side,
-            price: self.price,
-            quantity: self.quantity,
-            status: OrderStatus::New,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn new_order_can_be_cancelled() {
-        let mut order = Order {
+    fn create_order(status: OrderStatus) -> Order {
+        Order {
             id: 1,
             symbol: String::from("BTCUSDT"),
             side: Side::Buy,
             price: 100_000,
             quantity: 1,
-            status: OrderStatus::New,
-        };
+            status,
+        }
+    }
+
+    #[test]
+    fn new_order_can_be_cancelled() {
+        let mut order = create_order(OrderStatus::New);
 
         let result = order.cancel();
 
@@ -130,14 +134,7 @@ mod tests {
 
     #[test]
     fn filled_order_cannot_be_cancelled() {
-        let mut order = Order {
-            id: 1,
-            symbol: String::from("BTCUSDT"),
-            side: Side::Buy,
-            price: 100_000,
-            quantity: 1,
-            status: OrderStatus::New,
-        };
+        let mut order = create_order(OrderStatus::New);
 
         order.fill();
         let result = order.cancel();
