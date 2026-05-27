@@ -18,13 +18,13 @@ fn main() {
         })
         .unwrap();
 
-    println!("contains order 1: {}", order_book.contains_order(1));
-    println!("contains order 999: {}", order_book.contains_order(999));
+    match order_book.get_order(1) {
+        Some(order) => println!("found order: {:?}", order),
+        None => println!("order not found"),
+    }
 
-    order_book.cancel_order(1).unwrap();
-
-    println!(
-        "contains order 1 after cancel: {}",
-        order_book.contains_order(1)
-    );
+    match order_book.get_order(999) {
+        Some(order) => println!("found order: {:?}", order),
+        None => println!("order 999 not found"),
+    }
 }

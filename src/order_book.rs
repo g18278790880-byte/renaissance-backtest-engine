@@ -145,6 +145,19 @@ impl OrderBook {
     pub fn contains_order(&self, order_id: u64) -> bool {
         self.order_index.contains_key(&order_id)
     }
+
+    pub fn get_order(&self, order_id: u64) -> Option<&Order> {
+        let location = self.order_index.get(&order_id)?;
+
+        let book_side = match location.side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        let orders = book_side.get(&location.price)?;
+
+        orders.iter().find(|order| order.id == order_id)
+    }
 }
 
 #[cfg(test)]
@@ -369,5 +382,39 @@ mod tests {
         order_book.cancel_order(1).unwrap();
 
         assert!(!order_book.contains_order(1));
+    }
+
+    #[test]
+    fn get_order_returns_order_when_order_exists() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        let order = order_book.get_order(1);
+
+        assert!(order.is_some());
+        assert_eq!(order.unwrap().id, 1);
+    }
+
+    #[test]
+    fn get_order_returns_none_when_order_does_not_exist() {
+        let order_book = OrderBook::new();
+
+        assert!(order_book.get_order(999).is_none());
+    }
+
+    #[test]
+    fn get_order_returns_none_after_order_is_cancelled() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        order_book.cancel_order(1).unwrap();
+
+        assert!(order_book.get_order(1).is_none());
     }
 }
