@@ -254,6 +254,18 @@ impl OrderBook {
 
         Some(trade)
     }
+
+    pub fn match_orders(&mut self, start_trade_id: u64, timestamp: u64) -> Vec<Trade> {
+        let mut trades = Vec::new();
+        let mut next_trade_id = start_trade_id;
+
+        while let Some(trade) = self.match_best_orders(next_trade_id, timestamp) {
+            trades.push(trade);
+            next_trade_id += 1;
+        }
+
+        trades
+    }
 }
 
 #[cfg(test)]
@@ -636,5 +648,70 @@ mod tests {
         assert_eq!(order_book.order_count(), 2);
         assert!(order_book.contains_order(1));
         assert!(order_book.contains_order(2));
+    }
+
+    #[test]
+    fn match_orders_continues_until_prices_do_not_cross() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order_with_quantity(1, Side::Buy, 100_000, 5))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(2, Side::Sell, 99_000, 2))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(3, Side::Sell, 99_500, 2))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(4, Side::Sell, 100_000, 1))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(5, Side::Sell, 101_000, 1))
+            .unwrap();
+
+        let trades = order_book.match_orders(1, 1_717_000_000);
+
+        assert_eq!(trades.len(), 3);
+
+        assert_eq!(trades[0].sell_order_id, 2);
+        assert_eq!(trades[0].quantity, 2);
+
+        assert_eq!(trades[1].sell_order_id, 3);
+        assert_eq!(trades[1].quantity, 2);
+
+        assert_eq!(trades[2].sell_order_id, 4);
+        assert_eq!(trades[2].quantity, 1);
+
+        assert!(!order_book.contains_order(1));
+        assert!(!order_book.contains_order(2));
+        assert!(!order_book.contains_order(3));
+        assert!(!order_book.contains_order(4));
+        assert!(order_book.contains_order(5));
+
+        assert_eq!(order_book.best_bid(), None);
+        assert_eq!(order_book.best_ask(), Some(101_000));
+    }
+
+    #[test]
+    fn match_orders_returns_empty_vec_when_no_match_exists() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order_with_quantity(1, Side::Buy, 100_000, 2))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(2, Side::Sell, 101_000, 2))
+            .unwrap();
+
+        let trades = order_book.match_orders(1, 1_717_000_000);
+
+        assert!(trades.is_empty());
+        assert_eq!(order_book.order_count(), 2);
     }
 }
