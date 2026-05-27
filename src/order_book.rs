@@ -18,6 +18,7 @@ pub struct OrderLocation {
 #[derive(Debug, PartialEq, Eq)]
 pub enum OrderBookError {
     OrderNotFound(u64),
+    DuplicateOrderId(u64),
 }
 
 #[derive(Debug)]
@@ -36,7 +37,11 @@ impl OrderBook {
         }
     }
 
-    pub fn add_order(&mut self, order: Order) {
+    pub fn add_order(&mut self, order: Order) -> Result<(), OrderBookError> {
+        if self.order_index.contains_key(&order.id) {
+            return Err(OrderBookError::DuplicateOrderId(order.id));
+        }
+
         let location = OrderLocation {
             side: order.side,
             price: order.price,
@@ -52,6 +57,8 @@ impl OrderBook {
                 self.asks.entry(order.price).or_default().push(order);
             }
         }
+
+        Ok(())
     }
 
     pub fn cancel_order(&mut self, order_id: u64) -> Result<Order, OrderBookError> {
@@ -267,5 +274,18 @@ mod tests {
         let result = order_book.cancel_order(999);
 
         assert_eq!(result, Err(OrderBookError::OrderNotFound(999)));
+    }
+
+    #[test]
+    fn add_order_rejects_duplicate_order_id() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        let result = order_book.add_order(create_order(1, Side::Buy, 99_000));
+
+        assert_eq!(result, Err(OrderBookError::DuplicateOrderId(1)));
     }
 }
