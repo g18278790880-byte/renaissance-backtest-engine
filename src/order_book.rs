@@ -129,6 +129,18 @@ impl OrderBook {
             })
             .collect()
     }
+
+    pub fn order_count(&self) -> usize {
+        self.order_index.len()
+    }
+
+    pub fn bid_order_count(&self) -> usize {
+        self.bids.values().map(|orders| orders.len()).sum()
+    }
+
+    pub fn ask_order_count(&self) -> usize {
+        self.asks.values().map(|orders| orders.len()).sum()
+    }
 }
 
 #[cfg(test)]
@@ -287,5 +299,40 @@ mod tests {
         let result = order_book.add_order(create_order(1, Side::Buy, 99_000));
 
         assert_eq!(result, Err(OrderBookError::DuplicateOrderId(1)));
+    }
+
+    #[test]
+    fn order_count_returns_active_order_count() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        order_book
+            .add_order(create_order(2, Side::Sell, 101_000))
+            .unwrap();
+
+        assert_eq!(order_book.order_count(), 2);
+        assert_eq!(order_book.bid_order_count(), 1);
+        assert_eq!(order_book.ask_order_count(), 1);
+    }
+
+    #[test]
+    fn order_count_decreases_after_cancel_order() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order(1, Side::Buy, 100_000))
+            .unwrap();
+
+        order_book
+            .add_order(create_order(2, Side::Buy, 99_000))
+            .unwrap();
+
+        order_book.cancel_order(1).unwrap();
+
+        assert_eq!(order_book.order_count(), 1);
+        assert_eq!(order_book.bid_order_count(), 1);
     }
 }
