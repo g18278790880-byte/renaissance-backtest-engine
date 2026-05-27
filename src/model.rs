@@ -32,7 +32,7 @@ pub enum OrderError {
     Rejected,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Tick {
     pub symbol: String,
     pub price: i64,

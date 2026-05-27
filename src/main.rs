@@ -1,23 +1,28 @@
+mod event;
 mod model;
 mod order_book;
 
-use model::{OrderRequest, Side};
-use order_book::OrderBook;
+use event::Event;
+use model::{OrderRequest, Side, Tick};
 
 fn main() {
-    let mut order_book = OrderBook::new();
+    let events = vec![
+        Event::MarketTick(Tick {
+            symbol: String::from("BTCUSDT"),
+            price: 100_000,
+            quantity: 1,
+            timestamp: 1_717_000_000,
+        }),
+        Event::OrderRequest(OrderRequest {
+            symbol: String::from("BTCUSDT"),
+            side: Side::Buy,
+            price: 99_000,
+            quantity: 1,
+        }),
+    ];
 
-    let request = OrderRequest {
-        symbol: String::from("BTCUSDT"),
-        side: Side::Buy,
-        price: 100_000,
-        quantity: 1,
-    };
-
-    let order = request.into_order(1);
-
-    order_book.add_order(order).unwrap();
-
-    println!("order count: {}", order_book.order_count());
-    println!("best bid: {:?}", order_book.best_bid());
+    for event in &events {
+        println!("event type: {}", event.event_type());
+        println!("event detail: {:?}", event);
+    }
 }
