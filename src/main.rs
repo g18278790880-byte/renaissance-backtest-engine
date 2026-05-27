@@ -13,7 +13,7 @@ fn main() {
             symbol: String::from("BTCUSDT"),
             side: Side::Buy,
             price: 100_000,
-            quantity: 1,
+            quantity: 3,
             status: OrderStatus::New,
         })
         .unwrap();
@@ -22,31 +22,17 @@ fn main() {
         .add_order(Order {
             id: 2,
             symbol: String::from("BTCUSDT"),
-            side: Side::Buy,
-            price: 100_000,
+            side: Side::Sell,
+            price: 99_000,
             quantity: 2,
             status: OrderStatus::New,
         })
         .unwrap();
 
-    order_book
-        .add_order(Order {
-            id: 3,
-            symbol: String::from("BTCUSDT"),
-            side: Side::Sell,
-            price: 101_000,
-            quantity: 1,
-            status: OrderStatus::New,
-        })
-        .unwrap();
+    let trade = order_book.match_best_orders(1, 1_717_000_000);
 
-    match order_book.best_bid_order() {
-        Some(order) => println!("best bid order: {:?}", order),
-        None => println!("no bid order"),
-    }
-
-    match order_book.best_ask_order() {
-        Some(order) => println!("best ask order: {:?}", order),
-        None => println!("no ask order"),
-    }
+    println!("trade: {:?}", trade);
+    println!("order count: {}", order_book.order_count());
+    println!("buy order after match: {:?}", order_book.get_order(1));
+    println!("sell order after match: {:?}", order_book.get_order(2));
 }

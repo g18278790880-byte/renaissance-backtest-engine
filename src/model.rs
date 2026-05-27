@@ -66,10 +66,11 @@ impl Order {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Trade {
     pub trade_id: u64,
-    pub order_id: u64,
+    pub buy_order_id: u64,
+    pub sell_order_id: u64,
     pub symbol: String,
     pub price: i64,
     pub quantity: u64,

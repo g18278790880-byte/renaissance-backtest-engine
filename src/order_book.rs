@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use crate::model::{Order, Side};
+use crate::model::{Order, OrderStatus, Side, Trade};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DepthLevel {
@@ -169,6 +169,90 @@ impl OrderBook {
         let best_ask = self.best_ask()?;
 
         self.asks.get(&best_ask)?.first()
+    }
+
+    pub fn match_best_orders(&mut self, trade_id: u64, timestamp: u64) -> Option<Trade> {
+        let bid_price = self.best_bid()?;
+        let ask_price = self.best_ask()?;
+
+        if bid_price < ask_price {
+            return None;
+        }
+
+        let (trade, filled_buy_order_id, filled_sell_order_id) = {
+            let buy_orders = self.bids.get_mut(&bid_price)?;
+            let sell_orders = self.asks.get_mut(&ask_price)?;
+
+            let buy_order = buy_orders.first_mut()?;
+            let sell_order = sell_orders.first_mut()?;
+
+            let traded_quantity = buy_order.quantity.min(sell_order.quantity);
+
+            let trade = Trade {
+                trade_id,
+                buy_order_id: buy_order.id,
+                sell_order_id: sell_order.id,
+                symbol: buy_order.symbol.clone(),
+                price: ask_price,
+                quantity: traded_quantity,
+                timestamp,
+            };
+
+            buy_order.quantity -= traded_quantity;
+            sell_order.quantity -= traded_quantity;
+
+            buy_order.status = if buy_order.quantity == 0 {
+                OrderStatus::Filled
+            } else {
+                OrderStatus::PartiallyFilled
+            };
+
+            sell_order.status = if sell_order.quantity == 0 {
+                OrderStatus::Filled
+            } else {
+                OrderStatus::PartiallyFilled
+            };
+
+            let filled_buy_order_id = if buy_order.quantity == 0 {
+                Some(buy_order.id)
+            } else {
+                None
+            };
+
+            let filled_sell_order_id = if sell_order.quantity == 0 {
+                Some(sell_order.id)
+            } else {
+                None
+            };
+
+            (trade, filled_buy_order_id, filled_sell_order_id)
+        };
+
+        if let Some(order_id) = filled_buy_order_id {
+            if let Some(orders) = self.bids.get_mut(&bid_price) {
+                orders.remove(0);
+
+                if orders.is_empty() {
+                    self.bids.remove(&bid_price);
+                }
+            }
+
+            self.order_index.remove(&order_id);
+        }
+
+        if let Some(order_id) = filled_sell_order_id {
+            if let Some(orders) = self.asks.get_mut(&ask_price) {
+                orders.remove(0);
+
+                if orders.is_empty() {
+                    self.asks.remove(&ask_price);
+                }
+            }
+
+            self.order_index.remove(&order_id);
+        }
+
+        Some(trade)
     }
 }
 
@@ -484,5 +568,73 @@ mod tests {
         let order_book = OrderBook::new();
 
         assert!(order_book.best_ask_order().is_none());
+    }
+
+    #[test]
+    fn match_best_orders_creates_trade_when_prices_cross() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order_with_quantity(1, Side::Buy, 100_000, 3))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(2, Side::Sell, 99_000, 2))
+            .unwrap();
+
+        let trade = order_book.match_best_orders(1, 1_717_000_000).unwrap();
+
+        assert_eq!(trade.buy_order_id, 1);
+        assert_eq!(trade.sell_order_id, 2);
+        assert_eq!(trade.price, 99_000);
+        assert_eq!(trade.quantity, 2);
+
+        assert!(order_book.contains_order(1));
+        assert!(!order_book.contains_order(2));
+
+        let buy_order = order_book.get_order(1).unwrap();
+
+        assert_eq!(buy_order.quantity, 1);
+        assert_eq!(buy_order.status, OrderStatus::PartiallyFilled);
+    }
+
+    #[test]
+    fn match_best_orders_removes_both_orders_when_fully_matched() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order_with_quantity(1, Side::Buy, 100_000, 2))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(2, Side::Sell, 99_000, 2))
+            .unwrap();
+
+        let trade = order_book.match_best_orders(1, 1_717_000_000).unwrap();
+
+        assert_eq!(trade.quantity, 2);
+        assert_eq!(order_book.order_count(), 0);
+        assert!(order_book.best_bid().is_none());
+        assert!(order_book.best_ask().is_none());
+    }
+
+    #[test]
+    fn match_best_orders_returns_none_when_prices_do_not_cross() {
+        let mut order_book = OrderBook::new();
+
+        order_book
+            .add_order(create_order_with_quantity(1, Side::Buy, 100_000, 2))
+            .unwrap();
+
+        order_book
+            .add_order(create_order_with_quantity(2, Side::Sell, 101_000, 2))
+            .unwrap();
+
+        let trade = order_book.match_best_orders(1, 1_717_000_000);
+
+        assert!(trade.is_none());
+        assert_eq!(order_book.order_count(), 2);
+        assert!(order_book.contains_order(1));
+        assert!(order_book.contains_order(2));
     }
 }
