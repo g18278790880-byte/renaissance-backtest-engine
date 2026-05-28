@@ -2,37 +2,22 @@ mod engine;
 mod event;
 mod model;
 mod order_book;
+mod strategy;
 
-use engine::Engine;
-use event::Event;
-use model::{OrderRequest, Side};
+use model::Tick;
+use strategy::{Strategy, ThresholdStrategy};
 
 fn main() {
-    let mut engine = Engine::new();
+    let mut strategy = ThresholdStrategy::new(String::from("BTCUSDT"), 99_000, 101_000, 1);
 
-    let buy_event = Event::OrderRequest(OrderRequest {
+    let tick = Tick {
         symbol: String::from("BTCUSDT"),
-        side: Side::Buy,
-        price: 100_000,
-        quantity: 2,
-    });
-
-    let sell_event = Event::OrderRequest(OrderRequest {
-        symbol: String::from("BTCUSDT"),
-        side: Side::Sell,
-        price: 99_000,
+        price: 98_000,
         quantity: 1,
-    });
+        timestamp: 1_717_000_000,
+    };
 
-    let output_events = engine.handle_event(buy_event).unwrap();
-    println!("after buy event outputs: {:?}", output_events);
-    println!("order count: {}", engine.order_count());
-    println!("best bid: {:?}", engine.best_bid());
-    println!("best ask: {:?}", engine.best_ask());
+    let requests = strategy.on_tick(&tick);
 
-    let output_events = engine.handle_event(sell_event).unwrap();
-    println!("after sell event outputs: {:?}", output_events);
-    println!("order count: {}", engine.order_count());
-    println!("best bid: {:?}", engine.best_bid());
-    println!("best ask: {:?}", engine.best_ask());
+    println!("generated order requests: {:?}", requests);
 }
