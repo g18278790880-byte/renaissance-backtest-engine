@@ -4,7 +4,7 @@
 
 Renaissance Backtest Engine 是一个面向交易系统工程实践的 Rust 项目。它从行情、订单、成交、订单簿等基础模型出发，逐步扩展为一个事件驱动的回测引擎，覆盖策略执行、撮合模拟、持仓统计、API、日志、指标和性能测试等能力。
 
-当前项目已经从单独的订单簿模块推进到事件驱动雏形：系统可以接收 `Event::OrderRequest`，由 `Engine` 转换为订单并写入 `OrderBook`，在买卖价格交叉时完成基础撮合，并返回 `Event::Trade` 成交事件。
+当前项目已经从单独的订单簿模块推进到事件驱动雏形：系统可以接收 `Event::OrderRequest`，由 `Engine` 转换为订单并写入 `OrderBook`，在买卖价格交叉时完成基础撮合，并返回 `Event::Trade` 和 `Event::OrderUpdate`。策略侧也已开始实现，当前有 `Strategy` trait 和一个简单的 `ThresholdStrategy`。
 
 ---
 
@@ -34,8 +34,9 @@ portfolio + backtest-report
 
 - 使用 Rust 类型系统建模 `Tick`、`OrderRequest`、`Order`、`OrderUpdate`、`Trade` 和订单状态；
 - 维护可预测、可测试的价格档位订单簿；
-- 通过 `Event` 和 `Engine` 把订单请求、订单簿和成交事件连接起来；
-- 用单元测试验证订单生命周期、事件处理、订单簿行为和基础撮合；
+- 通过 `Event` 和 `Engine` 把订单请求、订单簿、订单状态变化和成交事件连接起来；
+- 通过 `Strategy` trait 将行情 tick 转换为订单请求；
+- 用单元测试验证订单生命周期、事件处理、策略输出、订单簿行为和基础撮合；
 - 在核心逻辑稳定后补充策略接口、回测循环、API、日志、指标、存储和性能测试。
 
 ---
@@ -44,7 +45,7 @@ portfolio + backtest-report
 
 已经实现：
 
-- Rust 项目骨架，包含 `main.rs`、`model.rs`、`event.rs`、`engine.rs` 和 `order_book.rs`；
+- Rust 项目骨架，包含 `main.rs`、`model.rs`、`event.rs`、`engine.rs`、`strategy.rs` 和 `order_book.rs`；
 - 核心数据模型：
   - `Tick`
   - `OrderRequest`
@@ -81,24 +82,30 @@ portfolio + backtest-report
   - 将 `OrderRequest` 转换为带内部 ID 的 `Order`；
   - 调用 `OrderBook` 执行添加订单与撮合；
   - 将撮合结果包装为 `Event::Trade` 返回；
+  - 根据撮合后的订单状态生成 `Event::OrderUpdate`；
   - 暴露 `order_count()`、`best_bid()`、`best_ask()` 便于观察当前状态；
+- 初版策略接口：
+  - 定义 `Strategy` trait；
+  - 支持 `on_tick(&Tick) -> Vec<OrderRequest>`；
+  - 预留 `on_order_update(&OrderUpdate)` 回调；
+  - 实现 `ThresholdStrategy`，当价格低于买入阈值时生成买单，高于卖出阈值时生成卖单；
 - 测试代码已从 `order_book.rs` 拆分到 `src/order_book/tests.rs`，并按行为整理为添加订单、盘口查询、取消订单、索引查询和撮合测试；
 - 已修复非 `dead_code` 类 warning：包括 Clippy 枚举命名提示，以及测试中未处理 `Result` 的问题；
-- 单元测试覆盖订单取消规则、事件类型、引擎事件处理、最优买卖价、价差、盘口深度、订单索引和基础撮合。
+- 单元测试覆盖订单取消规则、事件类型、引擎事件处理、策略输出、最优买卖价、价差、盘口深度、订单索引和基础撮合。
 
 当前里程碑：
 
 ```text
-Module 2：订单簿 + 事件引擎雏形
-状态：订单簿核心能力已完成，Event → Engine → OrderBook → Trade Event 链路已接入
-最新完成：Event / Engine / OrderRequest → OrderBook → Trade Event
+Module 3：策略接口与事件驱动模型
+状态：事件引擎已能输出 Trade / OrderUpdate，策略接口已开始
+最新完成：OrderUpdate Event 输出 / Strategy trait / ThresholdStrategy
 ```
 
 ---
 
 ## 已实现示例
 
-当前可执行程序会创建 `Engine`，发送买卖两个订单请求事件，并在价格交叉时返回成交事件：
+当前引擎可以处理订单请求事件，并在价格交叉时返回成交事件和订单状态变化事件：
 
 ```rust
 let mut engine = Engine::new();
@@ -121,7 +128,7 @@ let output_events = engine.handle_event(buy_event).unwrap();
 assert!(output_events.is_empty());
 
 let output_events = engine.handle_event(sell_event).unwrap();
-assert_eq!(output_events.len(), 1);
+assert_eq!(output_events.len(), 3);
 ```
 
 当前系统主链路：
@@ -133,7 +140,33 @@ Engine
   ↓
 OrderBook
   ↓
-Trade Event
+Trade Event + OrderUpdate Event
+```
+
+策略侧当前已经具备从 tick 生成订单请求的能力：
+
+```text
+Tick
+  ↓
+Strategy
+  ↓
+OrderRequest
+```
+
+示例策略：
+
+```rust
+let mut strategy = ThresholdStrategy::new(String::from("BTCUSDT"), 99_000, 101_000, 1);
+
+let tick = Tick {
+    symbol: String::from("BTCUSDT"),
+    price: 98_000,
+    quantity: 1,
+    timestamp: 1_717_000_000,
+};
+
+let requests = strategy.on_tick(&tick);
+assert_eq!(requests.len(), 1);
 ```
 
 `Engine` 目前负责把外部订单请求事件转为内部订单，并调用订单簿完成撮合：
@@ -149,7 +182,7 @@ pub fn handle_event(&mut self, event: Event) -> Result<Vec<Event>, EngineError> 
 }
 ```
 
-撮合逻辑当前采用简化版本：当最高买价大于或等于最低卖价时，以卖方价格生成成交，并根据成交数量更新订单状态；完全成交的订单会从订单簿和订单索引中移除。
+撮合逻辑当前采用简化版本：当最高买价大于或等于最低卖价时，以卖方价格生成成交，并根据成交数量更新订单状态；完全成交的订单会从订单簿和订单索引中移除。引擎会把成交包装为 `Event::Trade`，并为买卖双方生成对应的 `Event::OrderUpdate`。
 
 ---
 
@@ -163,6 +196,7 @@ src/
 ├── model.rs             # Tick / OrderRequest / Order / OrderUpdate / Trade 等核心模型
 ├── event.rs             # Event 枚举，连接行情、订单请求、订单更新和成交
 ├── engine.rs            # 事件处理引擎：Event → OrderBook → output Events
+├── strategy.rs          # Strategy trait 与 ThresholdStrategy
 ├── order_book.rs        # 价格档位订单簿
 └── order_book/
     └── tests.rs         # 订单簿测试，按行为分组
@@ -184,7 +218,6 @@ src/order_book/
 
 ```text
 src/
-├── strategy.rs          # 策略 trait 与示例策略
 ├── execution.rs         # 更完整的撮合、手续费、滑点模拟
 ├── backtest.rs          # 事件回放循环与回测报告生成
 ├── portfolio.rs         # 持仓、现金、PnL 统计
@@ -213,7 +246,8 @@ GET  /metrics
 | 项目骨架 | 已完成 | Cargo 项目和基础模块已建立 |
 | 核心模型 | 已完成 | `Tick`、`OrderRequest`、`Order`、`OrderUpdate`、`Trade`、方向、状态、错误枚举 |
 | 事件模型 | 已完成 | 已实现 `Event` 枚举和 `event_type()` |
-| 引擎雏形 | 已完成 | 已实现 `Engine::handle_event()` 处理订单请求并返回成交事件 |
+| 引擎雏形 | 已完成 | 已实现 `Engine::handle_event()` 处理订单请求并返回成交与订单更新事件 |
+| 策略接口 | 已开始 | 已实现 `Strategy` trait 和 `ThresholdStrategy` |
 | 订单生命周期 | 已完成 | 已实现成交和取消逻辑，并配有单元测试 |
 | 双边订单簿 | 已完成 | 已实现买盘 `bids` 和卖盘 `asks` |
 | 最优价查询 | 已完成 | 已实现 `best_bid()` 和 `best_ask()` |
@@ -223,10 +257,11 @@ GET  /metrics
 | 最优订单查询 | 已完成 | 已实现 `best_bid_order()` 和 `best_ask_order()` |
 | 基础撮合 | 已完成 | 已实现 `match_best_orders()` 和 `match_orders()` |
 | Trade Event 输出 | 已完成 | 引擎可将撮合结果返回为 `Event::Trade` |
-| OrderUpdate Event 输出 | 下一步 | 让引擎返回订单状态变化事件 |
+| OrderUpdate Event 输出 | 已完成 | 引擎可为成交双方返回 `Event::OrderUpdate` |
 | 测试拆分与整理 | 已完成 | 订单簿测试已拆到 `src/order_book/tests.rs` 并按行为分组 |
 | Warning 整理 | 已完成 | 已修复非 `dead_code` 类 warning |
-| 策略接口 | 未开始 | 后续使用 trait 抽象策略 |
+| Tick → Strategy → OrderRequest | 已完成 | 策略可基于行情阈值生成订单请求 |
+| Strategy → Engine 串联 | 下一步 | 将策略输出的订单请求送入引擎处理 |
 | 回测事件循环 | 未开始 | 后续连接行情、策略、订单和成交事件 |
 | 回测引擎 | 未开始 | 后续实现事件回放、撮合模拟和报告输出 |
 | API / 指标 / 存储 | 未开始 | 后续补充工程化能力 |
@@ -260,10 +295,10 @@ cargo run
 
 当前示例会：
 
-- 创建一个 `Engine`；
-- 发送买入和卖出两个 `Event::OrderRequest`；
-- 由引擎写入订单簿并触发基础撮合；
-- 输出引擎返回的事件、剩余订单数量和当前最优买卖价。
+- 创建一个 `ThresholdStrategy`；
+- 输入一条 `Tick`；
+- 根据价格阈值生成 `OrderRequest`；
+- 输出策略生成的订单请求。
 
 运行测试：
 
@@ -282,21 +317,39 @@ cargo check
 
 ## 下一步
 
-当前系统已经形成最小事件驱动链路：
+当前系统已经形成两段链路：
 
 ```text
-Event → Engine → OrderBook → Trade Event
+OrderRequest → Engine → OrderBook → Trade / OrderUpdate
+
+Tick → Strategy → OrderRequest
 ```
 
-下一步重点是实现 `OrderUpdate` 输出，让引擎不仅返回成交事件，还能返回订单状态变化事件：
+下一步重点是把这两段串起来，形成同步版最小业务闭环：
 
-1. 在订单被接受时返回 `OrderUpdate(New)`；
-2. 在订单部分成交时返回 `OrderUpdate(PartiallyFilled)`；
-3. 在订单完全成交时返回 `OrderUpdate(Filled)`；
-4. 在订单取消时返回 `OrderUpdate(Cancelled)`；
-5. 让 `Engine::handle_event()` 返回一组有顺序的输出事件，例如订单更新事件和成交事件。
+```text
+MarketTick
+  ↓
+Strategy.on_tick()
+  ↓
+OrderRequest
+  ↓
+Engine.handle_event()
+  ↓
+OrderBook
+  ↓
+Trade / OrderUpdate
+```
 
-之后再继续进入策略接口和回测事件循环。
+下一步可实现一个同步事件处理函数，例如 `process_market_tick()` 或 `run_tick()`：
+
+1. 接收一条 `Tick`；
+2. 调用策略生成 `OrderRequest`；
+3. 将订单请求包装成 `Event::OrderRequest`；
+4. 交给 `Engine::handle_event()`；
+5. 收集并返回 `Trade` / `OrderUpdate` 等输出事件。
+
+完成这一步后，项目就会从“订单簿 + 策略零件”升级成一个同步版事件驱动交易系统 mini 版，然后再进入 Tokio/channel 的异步化阶段。
 
 ---
 
@@ -309,4 +362,3 @@ Event → Engine → OrderBook → Trade Event
 - 从订单簿推进到事件驱动引擎；
 - 逐步构建的市场微观结构组件；
 - 从小模块验证开始，逐渐扩展到策略、回测、异步服务、API、指标和存储。
-
