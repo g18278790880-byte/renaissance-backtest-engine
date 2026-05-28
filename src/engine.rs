@@ -1,5 +1,5 @@
 use crate::event::Event;
-use crate::model::OrderRequest;
+use crate::model::{OrderRequest, OrderStatus, OrderUpdate};
 use crate::order_book::{OrderBook, OrderBookError};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -43,13 +43,49 @@ impl Engine {
             .map_err(EngineError::OrderBook)?;
 
         let timestamp = 0;
-        let trades = self.order_book.match_orders(self.next_trade_id, timestamp);
+        let mut output_events = Vec::new();
 
-        self.next_trade_id += trades.len() as u64;
+        while let Some(trade) = self
+            .order_book
+            .match_best_orders(self.next_trade_id, timestamp)
+        {
+            let buy_update = self.build_order_update(trade.buy_order_id, trade.quantity, timestamp);
 
-        let events = trades.into_iter().map(Event::Trade).collect();
+            let sell_update =
+                self.build_order_update(trade.sell_order_id, trade.quantity, timestamp);
 
-        Ok(events)
+            self.next_trade_id += 1;
+
+            output_events.push(Event::Trade(trade));
+            output_events.push(Event::OrderUpdate(buy_update));
+            output_events.push(Event::OrderUpdate(sell_update));
+        }
+
+        Ok(output_events)
+    }
+
+    fn build_order_update(
+        &self,
+        order_id: u64,
+        filled_quantity: u64,
+        timestamp: u64,
+    ) -> OrderUpdate {
+        match self.order_book.get_order(order_id) {
+            Some(order) => OrderUpdate {
+                order_id,
+                status: order.status,
+                filled_quantity,
+                remaining_quantity: order.quantity,
+                timestamp,
+            },
+            None => OrderUpdate {
+                order_id,
+                status: OrderStatus::Filled,
+                filled_quantity,
+                remaining_quantity: 0,
+                timestamp,
+            },
+        }
     }
 
     pub fn order_count(&self) -> usize {
@@ -89,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn engine_matches_crossed_orders_and_emits_trade_event() {
+    fn engine_matches_crossed_orders_and_emits_trade_and_order_updates() {
         let mut engine = Engine::new();
 
         engine
@@ -110,7 +146,7 @@ mod tests {
             }))
             .unwrap();
 
-        assert_eq!(output_events.len(), 1);
+        assert_eq!(output_events.len(), 3);
 
         match &output_events[0] {
             Event::Trade(trade) => {
@@ -120,6 +156,26 @@ mod tests {
                 assert_eq!(trade.quantity, 1);
             }
             _ => panic!("expected trade event"),
+        }
+
+        match &output_events[1] {
+            Event::OrderUpdate(update) => {
+                assert_eq!(update.order_id, 1);
+                assert_eq!(update.status, OrderStatus::PartiallyFilled);
+                assert_eq!(update.filled_quantity, 1);
+                assert_eq!(update.remaining_quantity, 1);
+            }
+            _ => panic!("expected buy order update"),
+        }
+
+        match &output_events[2] {
+            Event::OrderUpdate(update) => {
+                assert_eq!(update.order_id, 2);
+                assert_eq!(update.status, OrderStatus::Filled);
+                assert_eq!(update.filled_quantity, 1);
+                assert_eq!(update.remaining_quantity, 0);
+            }
+            _ => panic!("expected sell order update"),
         }
 
         assert_eq!(engine.order_count(), 1);

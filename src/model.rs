@@ -4,7 +4,7 @@ pub enum Side {
     Sell,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderStatus {
     New,
     PartiallyFilled,
