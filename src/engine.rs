@@ -1,6 +1,7 @@
 use crate::event::Event;
-use crate::model::{OrderRequest, OrderStatus, OrderUpdate};
+use crate::model::{OrderRequest, OrderStatus, OrderUpdate, Tick};
 use crate::order_book::{OrderBook, OrderBookError};
+use crate::strategy::Strategy;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum EngineError {
@@ -99,12 +100,31 @@ impl Engine {
     pub fn best_ask(&self) -> Option<i64> {
         self.order_book.best_ask()
     }
+
+    pub fn process_market_tick<S: Strategy>(
+        &mut self,
+        tick: &Tick,
+        strategy: &mut S,
+    ) -> Result<Vec<Event>, EngineError> {
+        let requests = strategy.on_tick(tick);
+
+        let mut output_events = Vec::new();
+
+        for request in requests {
+            let events = self.handle_event(Event::OrderRequest(request))?;
+            output_events.extend(events);
+        }
+
+        Ok(output_events)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Tick;
     use crate::model::{OrderRequest, Side};
+    use crate::strategy::ThresholdStrategy;
 
     #[test]
     fn engine_adds_order_request_to_order_book() {
@@ -176,6 +196,103 @@ mod tests {
                 assert_eq!(update.remaining_quantity, 0);
             }
             _ => panic!("expected sell order update"),
+        }
+
+        assert_eq!(engine.order_count(), 1);
+        assert_eq!(engine.best_bid(), Some(100_000));
+        assert_eq!(engine.best_ask(), None);
+    }
+
+    #[test]
+    fn engine_process_market_tick_generates_order_from_strategy() {
+        let mut engine = Engine::new();
+
+        let mut strategy = ThresholdStrategy::new(String::from("BTCUSDT"), 99_000, 101_000, 1);
+
+        let tick = Tick {
+            symbol: String::from("BTCUSDT"),
+            price: 98_000,
+            quantity: 1,
+            timestamp: 1_717_000_000,
+        };
+
+        let output_events = engine.process_market_tick(&tick, &mut strategy).unwrap();
+
+        assert!(output_events.is_empty());
+        assert_eq!(engine.order_count(), 1);
+        assert_eq!(engine.best_bid(), Some(98_000));
+        assert_eq!(engine.best_ask(), None);
+    }
+
+    struct CrossStrategy {
+        call_count: usize,
+    }
+
+    impl CrossStrategy {
+        fn new() -> Self {
+            Self { call_count: 0 }
+        }
+    }
+
+    impl Strategy for CrossStrategy {
+        fn on_tick(&mut self, tick: &Tick) -> Vec<OrderRequest> {
+            self.call_count += 1;
+
+            if self.call_count == 1 {
+                vec![OrderRequest {
+                    symbol: tick.symbol.clone(),
+                    side: Side::Buy,
+                    price: 100_000,
+                    quantity: 2,
+                }]
+            } else {
+                vec![OrderRequest {
+                    symbol: tick.symbol.clone(),
+                    side: Side::Sell,
+                    price: 99_000,
+                    quantity: 1,
+                }]
+            }
+        }
+    }
+
+    #[test]
+    fn engine_process_market_tick_can_drive_strategy_and_matching() {
+        let mut engine = Engine::new();
+        let mut strategy = CrossStrategy::new();
+
+        let tick1 = Tick {
+            symbol: String::from("BTCUSDT"),
+            price: 100_000,
+            quantity: 1,
+            timestamp: 1,
+        };
+
+        let tick2 = Tick {
+            symbol: String::from("BTCUSDT"),
+            price: 99_000,
+            quantity: 1,
+            timestamp: 2,
+        };
+
+        let output_events = engine.process_market_tick(&tick1, &mut strategy).unwrap();
+
+        assert!(output_events.is_empty());
+        assert_eq!(engine.order_count(), 1);
+        assert_eq!(engine.best_bid(), Some(100_000));
+
+        let output_events = engine.process_market_tick(&tick2, &mut strategy).unwrap();
+
+        assert_eq!(output_events.len(), 3);
+
+        match &output_events[0] {
+            Event::Trade(trade) => {
+                assert_eq!(trade.buy_order_id, 1);
+                assert_eq!(trade.sell_order_id, 2);
+                assert_eq!(trade.price, 99_000);
+                assert_eq!(trade.quantity, 1);
+            }
+            _ => panic!("expected trade event"),
         }
 
         assert_eq!(engine.order_count(), 1);
