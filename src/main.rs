@@ -4,6 +4,8 @@ mod model;
 mod order_book;
 mod strategy;
 
+use engine::Engine;
+use event::Event;
 use model::{OrderRequest, Tick};
 use strategy::{Strategy, ThresholdStrategy};
 use tokio::sync::mpsc;
@@ -59,15 +61,36 @@ async fn main() {
         println!("strategy task: tick channel closed");
     });
 
-    let order_logger_task = tokio::spawn(async move {
+    let execution_task = tokio::spawn(async move {
+        let mut engine = Engine::new();
+
         while let Some(request) = order_rx.recv().await {
-            println!("order logger task: order request received: {:?}", request);
+            println!("execution task: order request received: {:?}", request);
+
+            match engine.handle_event(Event::OrderRequest(request)) {
+                Ok(output_events) => {
+                    if output_events.is_empty() {
+                        println!("execution task: no trade generated");
+                    } else {
+                        for event in output_events {
+                            println!("execution task: output event: {:?}", event);
+                        }
+                    }
+
+                    println!("execution task: order count = {}", engine.order_count());
+                    println!("execution task: best bid = {:?}", engine.best_bid());
+                    println!("execution task: best ask = {:?}", engine.best_ask());
+                }
+                Err(err) => {
+                    println!("execution task: failed to handle order request: {:?}", err);
+                }
+            }
         }
 
-        println!("order logger task: order request channel closed");
+        println!("execution task: order request channel closed");
     });
 
     market_data_task.await.unwrap();
     strategy_task.await.unwrap();
-    order_logger_task.await.unwrap();
+    execution_task.await.unwrap();
 }
