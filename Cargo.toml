@@ -6,5 +6,6 @@ description = "A mini event-driven trading backtest and order management engine 
 license = "MIT"
 
 [dependencies]
+tokio = { version = "1.52.3", features = ["full"] }
 
 [dev-dependencies]
