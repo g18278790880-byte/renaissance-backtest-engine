@@ -4,6 +4,7 @@ mod event;
 mod market_data;
 mod model;
 mod order_book;
+mod portfolio;
 mod strategy;
 mod tasks;
 
