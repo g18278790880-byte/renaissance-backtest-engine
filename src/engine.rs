@@ -38,6 +38,7 @@ impl Engine {
         self.next_order_id += 1;
 
         let order = request.into_order(order_id);
+        let initial_quantity = order.quantity;
 
         self.order_book
             .add_order(order)
@@ -45,6 +46,14 @@ impl Engine {
 
         let timestamp = 0;
         let mut output_events = Vec::new();
+
+        output_events.push(Event::OrderUpdate(OrderUpdate {
+            order_id,
+            status: OrderStatus::New,
+            filled_quantity: 0,
+            remaining_quantity: initial_quantity,
+            timestamp,
+        }));
 
         while let Some(trade) = self
             .order_book

@@ -3,6 +3,24 @@ use crate::model::Tick;
 use crate::model::{OrderRequest, Side};
 use crate::strategy::ThresholdStrategy;
 
+fn assert_new_order_update(
+    event: &Event,
+    order_id: u64,
+    remaining_quantity: u64,
+    expected_message: &str,
+) {
+    match event {
+        Event::OrderUpdate(update) => {
+            assert_eq!(update.order_id, order_id);
+            assert_eq!(update.status, OrderStatus::New);
+            assert_eq!(update.filled_quantity, 0);
+            assert_eq!(update.remaining_quantity, remaining_quantity);
+            assert_eq!(update.timestamp, 0);
+        }
+        _ => panic!("{expected_message}"),
+    }
+}
+
 #[test]
 fn engine_adds_order_request_to_order_book() {
     let mut engine = Engine::new();
@@ -16,7 +34,8 @@ fn engine_adds_order_request_to_order_book() {
 
     let output_events = engine.handle_event(event).unwrap();
 
-    assert!(output_events.is_empty());
+    assert_eq!(output_events.len(), 1);
+    assert_new_order_update(&output_events[0], 1, 1, "expected new order update");
     assert_eq!(engine.order_count(), 1);
     assert_eq!(engine.best_bid(), Some(100_000));
 }
@@ -43,9 +62,10 @@ fn engine_matches_crossed_orders_and_emits_trade_and_order_updates() {
         }))
         .unwrap();
 
-    assert_eq!(output_events.len(), 3);
+    assert_eq!(output_events.len(), 4);
+    assert_new_order_update(&output_events[0], 2, 1, "expected new order update");
 
-    match &output_events[0] {
+    match &output_events[1] {
         Event::Trade(trade) => {
             assert_eq!(trade.buy_order_id, 1);
             assert_eq!(trade.sell_order_id, 2);
@@ -55,7 +75,7 @@ fn engine_matches_crossed_orders_and_emits_trade_and_order_updates() {
         _ => panic!("expected trade event"),
     }
 
-    match &output_events[1] {
+    match &output_events[2] {
         Event::OrderUpdate(update) => {
             assert_eq!(update.order_id, 1);
             assert_eq!(update.status, OrderStatus::PartiallyFilled);
@@ -65,7 +85,7 @@ fn engine_matches_crossed_orders_and_emits_trade_and_order_updates() {
         _ => panic!("expected buy order update"),
     }
 
-    match &output_events[2] {
+    match &output_events[3] {
         Event::OrderUpdate(update) => {
             assert_eq!(update.order_id, 2);
             assert_eq!(update.status, OrderStatus::Filled);
@@ -95,7 +115,8 @@ fn engine_process_market_tick_generates_order_from_strategy() {
 
     let output_events = engine.process_market_tick(&tick, &mut strategy).unwrap();
 
-    assert!(output_events.is_empty());
+    assert_eq!(output_events.len(), 1);
+    assert_new_order_update(&output_events[0], 1, 1, "expected new order update");
     assert_eq!(engine.order_count(), 1);
     assert_eq!(engine.best_bid(), Some(98_000));
     assert_eq!(engine.best_ask(), None);
@@ -154,15 +175,17 @@ fn engine_process_market_tick_can_drive_strategy_and_matching() {
 
     let output_events = engine.process_market_tick(&tick1, &mut strategy).unwrap();
 
-    assert!(output_events.is_empty());
+    assert_eq!(output_events.len(), 1);
+    assert_new_order_update(&output_events[0], 1, 2, "expected new order update");
     assert_eq!(engine.order_count(), 1);
     assert_eq!(engine.best_bid(), Some(100_000));
 
     let output_events = engine.process_market_tick(&tick2, &mut strategy).unwrap();
 
-    assert_eq!(output_events.len(), 3);
+    assert_eq!(output_events.len(), 4);
+    assert_new_order_update(&output_events[0], 2, 1, "expected new order update");
 
-    match &output_events[0] {
+    match &output_events[1] {
         Event::Trade(trade) => {
             assert_eq!(trade.buy_order_id, 1);
             assert_eq!(trade.sell_order_id, 2);
@@ -170,6 +193,28 @@ fn engine_process_market_tick_can_drive_strategy_and_matching() {
             assert_eq!(trade.quantity, 1);
         }
         _ => panic!("expected trade event"),
+    }
+
+    match &output_events[2] {
+        Event::OrderUpdate(update) => {
+            assert_eq!(update.order_id, 1);
+            assert_eq!(update.status, OrderStatus::PartiallyFilled);
+            assert_eq!(update.filled_quantity, 1);
+            assert_eq!(update.remaining_quantity, 1);
+            assert_eq!(update.timestamp, 0);
+        }
+        _ => panic!("expected buy order update"),
+    }
+
+    match &output_events[3] {
+        Event::OrderUpdate(update) => {
+            assert_eq!(update.order_id, 2);
+            assert_eq!(update.status, OrderStatus::Filled);
+            assert_eq!(update.filled_quantity, 1);
+            assert_eq!(update.remaining_quantity, 0);
+            assert_eq!(update.timestamp, 0);
+        }
+        _ => panic!("expected sell order update"),
     }
 
     assert_eq!(engine.order_count(), 1);

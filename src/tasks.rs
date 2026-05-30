@@ -99,8 +99,32 @@ mod tests {
         let first_event = recv_event(&mut event_rx).await;
         let second_event = recv_event(&mut event_rx).await;
         let third_event = recv_event(&mut event_rx).await;
+        let fourth_event = recv_event(&mut event_rx).await;
+        let fifth_event = recv_event(&mut event_rx).await;
 
         match first_event {
+            Event::OrderUpdate(update) => {
+                assert_eq!(update.order_id, 1);
+                assert_eq!(update.status, OrderStatus::New);
+                assert_eq!(update.filled_quantity, 0);
+                assert_eq!(update.remaining_quantity, 2);
+                assert_eq!(update.timestamp, 0);
+            }
+            _ => panic!("expected new buy order update event"),
+        }
+
+        match second_event {
+            Event::OrderUpdate(update) => {
+                assert_eq!(update.order_id, 2);
+                assert_eq!(update.status, OrderStatus::New);
+                assert_eq!(update.filled_quantity, 0);
+                assert_eq!(update.remaining_quantity, 1);
+                assert_eq!(update.timestamp, 0);
+            }
+            _ => panic!("expected new sell order update event"),
+        }
+
+        match third_event {
             Event::Trade(trade) => {
                 assert_eq!(trade.trade_id, 1);
                 assert_eq!(trade.buy_order_id, 1);
@@ -112,22 +136,24 @@ mod tests {
             _ => panic!("expected trade event"),
         }
 
-        match second_event {
+        match fourth_event {
             Event::OrderUpdate(update) => {
                 assert_eq!(update.order_id, 1);
                 assert_eq!(update.status, OrderStatus::PartiallyFilled);
                 assert_eq!(update.filled_quantity, 1);
                 assert_eq!(update.remaining_quantity, 1);
+                assert_eq!(update.timestamp, 0);
             }
             _ => panic!("expected buy order update event"),
         }
 
-        match third_event {
+        match fifth_event {
             Event::OrderUpdate(update) => {
                 assert_eq!(update.order_id, 2);
                 assert_eq!(update.status, OrderStatus::Filled);
                 assert_eq!(update.filled_quantity, 1);
                 assert_eq!(update.remaining_quantity, 0);
+                assert_eq!(update.timestamp, 0);
             }
             _ => panic!("expected sell order update event"),
         }
