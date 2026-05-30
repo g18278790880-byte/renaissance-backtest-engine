@@ -1,0 +1,142 @@
+use crate::engine::Engine;
+use crate::event::Event;
+use crate::model::Tick;
+use crate::strategy::Strategy;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BacktestResult {
+    pub tick_count: usize,
+    pub order_request_count: usize,
+    pub trade_count: usize,
+    pub order_update_count: usize,
+    pub event_count: usize,
+}
+
+pub struct BacktestEngine<S>
+where
+    S: Strategy,
+{
+    strategy: S,
+    engine: Engine,
+}
+
+impl<S> BacktestEngine<S>
+where
+    S: Strategy,
+{
+    pub fn new(strategy: S) -> Self {
+        Self {
+            strategy,
+            engine: Engine::new(),
+        }
+    }
+
+    pub fn run(&mut self, ticks: &[Tick]) -> BacktestResult {
+        let mut order_request_count = 0;
+        let mut trade_count = 0;
+        let mut order_update_count = 0;
+        let mut event_count = 0;
+
+        let mut sorted_ticks: Vec<&Tick> = ticks.iter().collect();
+        sorted_ticks.sort_by_key(|tick| tick.timestamp);
+
+        for tick in sorted_ticks {
+            let order_requests = self.strategy.on_tick(tick);
+            order_request_count += order_requests.len();
+
+            for request in order_requests {
+                let events = self
+                    .engine
+                    .handle_event(Event::OrderRequest(request))
+                    .expect("engine failed to handle order request during backtest");
+
+                event_count += events.len();
+
+                for event in events {
+                    match event {
+                        Event::Trade(_) => {
+                            trade_count += 1;
+                        }
+                        Event::OrderUpdate(_) => {
+                            order_update_count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        BacktestResult {
+            tick_count: ticks.len(),
+            order_request_count,
+            trade_count,
+            order_update_count,
+            event_count,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Tick;
+    use crate::strategy::DemoCrossStrategy;
+
+    #[test]
+    fn backtest_engine_runs_ticks_through_strategy_and_engine() {
+        let ticks = vec![
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 100_000,
+                quantity: 1,
+                timestamp: 1,
+            },
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 99_000,
+                quantity: 1,
+                timestamp: 2,
+            },
+        ];
+
+        let strategy = DemoCrossStrategy::new();
+        let mut backtest_engine = BacktestEngine::new(strategy);
+
+        let result = backtest_engine.run(&ticks);
+
+        assert_eq!(result.tick_count, 2);
+        assert_eq!(result.order_request_count, 2);
+        assert_eq!(result.trade_count, 1);
+        assert_eq!(result.order_update_count, 4);
+        assert_eq!(result.event_count, 5);
+    }
+
+    #[test]
+    fn backtest_engine_sorts_ticks_by_timestamp() {
+        let ticks = vec![
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 99_000,
+                quantity: 1,
+                timestamp: 2,
+            },
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 100_000,
+                quantity: 1,
+                timestamp: 1,
+            },
+        ];
+
+        let strategy = DemoCrossStrategy::new();
+        let mut backtest_engine = BacktestEngine::new(strategy);
+
+        let result = backtest_engine.run(&ticks);
+
+        assert_eq!(result.tick_count, 2);
+        assert_eq!(result.order_request_count, 2);
+        assert_eq!(result.trade_count, 1);
+        assert_eq!(result.order_update_count, 4);
+        assert_eq!(result.event_count, 5);
+    }
+}

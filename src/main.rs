@@ -1,3 +1,4 @@
+mod backtest;
 mod engine;
 mod event;
 mod market_data;
