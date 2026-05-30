@@ -63,6 +63,13 @@ impl Portfolio {
             .map(|position| position.quantity)
             .unwrap_or(0)
     }
+
+    pub fn position_quantities(&self) -> HashMap<String, i64> {
+        self.positions
+            .iter()
+            .map(|(symbol, position)| (symbol.clone(), position.quantity))
+            .collect()
+    }
 }
 
 #[cfg(test)]
