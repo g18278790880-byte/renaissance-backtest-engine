@@ -1,42 +1,8 @@
 use crate::engine::Engine;
 use crate::event::Event;
-use crate::model::{OrderRequest, Side, Tick};
-use crate::strategy::Strategy;
+use crate::model::{OrderRequest, Tick};
+use crate::strategy::{DemoCrossStrategy, Strategy};
 use tokio::sync::mpsc;
-
-struct CrossStrategy {
-    call_count: usize,
-}
-
-impl CrossStrategy {
-    fn new() -> Self {
-        Self { call_count: 0 }
-    }
-}
-
-impl Strategy for CrossStrategy {
-    fn on_tick(&mut self, tick: &Tick) -> Vec<OrderRequest> {
-        self.call_count += 1;
-
-        if self.call_count == 1 {
-            vec![OrderRequest {
-                symbol: tick.symbol.clone(),
-                side: Side::Buy,
-                price: 100_000,
-                quantity: 2,
-            }]
-        } else if self.call_count == 2 {
-            vec![OrderRequest {
-                symbol: tick.symbol.clone(),
-                side: Side::Sell,
-                price: 99_000,
-                quantity: 1,
-            }]
-        } else {
-            Vec::new()
-        }
-    }
-}
 
 pub async fn market_data_task(tick_tx: mpsc::Sender<Tick>) {
     let ticks = vec![
@@ -65,7 +31,7 @@ pub async fn strategy_task(
     mut tick_rx: mpsc::Receiver<Tick>,
     order_tx: mpsc::Sender<OrderRequest>,
 ) {
-    let mut strategy = CrossStrategy::new();
+    let mut strategy = DemoCrossStrategy::new();
 
     while let Some(tick) = tick_rx.recv().await {
         println!("strategy task: tick received: {:?}", tick);

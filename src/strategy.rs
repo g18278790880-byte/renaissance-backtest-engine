@@ -51,6 +51,41 @@ impl Strategy for ThresholdStrategy {
     }
 }
 
+#[derive(Debug)]
+pub struct DemoCrossStrategy {
+    call_count: usize,
+}
+
+impl DemoCrossStrategy {
+    pub fn new() -> Self {
+        Self { call_count: 0 }
+    }
+}
+
+impl Strategy for DemoCrossStrategy {
+    fn on_tick(&mut self, tick: &Tick) -> Vec<OrderRequest> {
+        self.call_count += 1;
+
+        if self.call_count == 1 {
+            vec![OrderRequest {
+                symbol: tick.symbol.clone(),
+                side: Side::Buy,
+                price: 100_000,
+                quantity: 2,
+            }]
+        } else if self.call_count == 2 {
+            vec![OrderRequest {
+                symbol: tick.symbol.clone(),
+                side: Side::Sell,
+                price: 99_000,
+                quantity: 1,
+            }]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +147,30 @@ mod tests {
         let requests = strategy.on_tick(&tick);
 
         assert!(requests.is_empty());
+    }
+
+    #[test]
+    fn demo_cross_strategy_generates_crossed_buy_then_sell_orders() {
+        let mut strategy = DemoCrossStrategy::new();
+
+        let tick1 = create_tick("BTCUSDT", 100_000);
+        let tick2 = create_tick("BTCUSDT", 99_000);
+        let tick3 = create_tick("BTCUSDT", 98_000);
+
+        let requests1 = strategy.on_tick(&tick1);
+        let requests2 = strategy.on_tick(&tick2);
+        let requests3 = strategy.on_tick(&tick3);
+
+        assert_eq!(requests1.len(), 1);
+        assert_eq!(requests1[0].side, Side::Buy);
+        assert_eq!(requests1[0].price, 100_000);
+        assert_eq!(requests1[0].quantity, 2);
+
+        assert_eq!(requests2.len(), 1);
+        assert_eq!(requests2[0].side, Side::Sell);
+        assert_eq!(requests2[0].price, 99_000);
+        assert_eq!(requests2[0].quantity, 1);
+
+        assert!(requests3.is_empty());
     }
 }
