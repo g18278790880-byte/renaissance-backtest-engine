@@ -48,6 +48,7 @@ impl Strategy for CrossStrategy {
 async fn main() {
     let (tick_tx, mut tick_rx) = mpsc::channel::<Tick>(100);
     let (order_tx, mut order_rx) = mpsc::channel::<OrderRequest>(100);
+    let (event_tx, mut event_rx) = mpsc::channel::<Event>(100);
 
     let market_data_task = tokio::spawn(async move {
         let ticks = vec![
@@ -98,11 +99,11 @@ async fn main() {
             match engine.handle_event(Event::OrderRequest(request)) {
                 Ok(output_events) => {
                     if output_events.is_empty() {
-                        println!("execution task: no trade generated");
-                    } else {
-                        for event in output_events {
-                            println!("execution task: output event: {:?}", event);
-                        }
+                        println!("execution task: no output event generated");
+                    }
+
+                    for event in output_events {
+                        event_tx.send(event).await.unwrap();
                     }
 
                     println!("execution task: order count = {}", engine.order_count());
@@ -118,7 +119,16 @@ async fn main() {
         println!("execution task: order request channel closed");
     });
 
+    let event_logger_task = tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            println!("event logger task: event received: {:?}", event);
+        }
+
+        println!("event logger task: event channel closed");
+    });
+
     market_data_task.await.unwrap();
     strategy_task.await.unwrap();
     execution_task.await.unwrap();
+    event_logger_task.await.unwrap();
 }
