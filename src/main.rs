@@ -1,6 +1,7 @@
 mod backtest;
 mod engine;
 mod event;
+mod fill_simulator;
 mod market_data;
 mod model;
 mod order_book;
