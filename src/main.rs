@@ -6,9 +6,43 @@ mod strategy;
 
 use engine::Engine;
 use event::Event;
-use model::{OrderRequest, Tick};
-use strategy::{Strategy, ThresholdStrategy};
+use model::{OrderRequest, Side, Tick};
+use strategy::Strategy;
 use tokio::sync::mpsc;
+
+struct CrossStrategy {
+    call_count: usize,
+}
+
+impl CrossStrategy {
+    fn new() -> Self {
+        Self { call_count: 0 }
+    }
+}
+
+impl Strategy for CrossStrategy {
+    fn on_tick(&mut self, tick: &Tick) -> Vec<OrderRequest> {
+        self.call_count += 1;
+
+        if self.call_count == 1 {
+            vec![OrderRequest {
+                symbol: tick.symbol.clone(),
+                side: Side::Buy,
+                price: 100_000,
+                quantity: 2,
+            }]
+        } else if self.call_count == 2 {
+            vec![OrderRequest {
+                symbol: tick.symbol.clone(),
+                side: Side::Sell,
+                price: 99_000,
+                quantity: 1,
+            }]
+        } else {
+            Vec::new()
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -19,21 +53,15 @@ async fn main() {
         let ticks = vec![
             Tick {
                 symbol: String::from("BTCUSDT"),
-                price: 98_000,
+                price: 100_000,
                 quantity: 1,
                 timestamp: 1,
             },
             Tick {
                 symbol: String::from("BTCUSDT"),
-                price: 100_000,
+                price: 99_000,
                 quantity: 1,
                 timestamp: 2,
-            },
-            Tick {
-                symbol: String::from("BTCUSDT"),
-                price: 102_000,
-                quantity: 1,
-                timestamp: 3,
             },
         ];
 
@@ -45,7 +73,7 @@ async fn main() {
     });
 
     let strategy_task = tokio::spawn(async move {
-        let mut strategy = ThresholdStrategy::new(String::from("BTCUSDT"), 99_000, 101_000, 1);
+        let mut strategy = CrossStrategy::new();
 
         while let Some(tick) = tick_rx.recv().await {
             println!("strategy task: tick received: {:?}", tick);
