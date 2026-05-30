@@ -5,9 +5,7 @@ use crate::model::{OrderRequest, Tick};
 use crate::strategy::{DemoCrossStrategy, Strategy};
 use tokio::sync::mpsc;
 
-pub async fn market_data_task(tick_tx: mpsc::Sender<Tick>) {
-    let simulator = MarketDataSimulator::demo_cross_ticks();
-
+pub async fn market_data_task(simulator: MarketDataSimulator, tick_tx: mpsc::Sender<Tick>) {
     simulator.run(tick_tx).await;
 }
 
@@ -90,7 +88,8 @@ mod tests {
         let (order_tx, order_rx) = mpsc::channel::<OrderRequest>(10);
         let (event_tx, mut event_rx) = mpsc::channel::<Event>(10);
 
-        let market_data_handle = tokio::spawn(market_data_task(tick_tx));
+        let simulator = MarketDataSimulator::demo_cross_ticks();
+        let market_data_handle = tokio::spawn(market_data_task(simulator, tick_tx));
         let strategy_handle = tokio::spawn(strategy_task(tick_rx, order_tx));
         let execution_handle = tokio::spawn(execution_task(order_rx, event_tx));
 
