@@ -13,6 +13,7 @@ pub struct BacktestResult {
     pub order_update_count: usize,
     pub event_count: usize,
     pub final_cash: i128,
+    pub final_equity: i128,
     pub portfolio_trade_count: usize,
     pub final_positions: HashMap<String, i64>,
 }
@@ -45,11 +46,14 @@ where
         let mut trade_count = 0;
         let mut order_update_count = 0;
         let mut event_count = 0;
+        let mut last_prices = HashMap::new();
 
         let mut sorted_ticks: Vec<&Tick> = ticks.iter().collect();
         sorted_ticks.sort_by_key(|tick| tick.timestamp);
 
         for tick in sorted_ticks {
+            last_prices.insert(tick.symbol.clone(), tick.price);
+
             let order_requests = self.strategy.on_tick(tick);
             order_request_count += order_requests.len();
 
@@ -106,6 +110,7 @@ where
             order_update_count,
             event_count,
             final_cash: self.portfolio.cash(),
+            final_equity: self.portfolio.equity(&last_prices),
             portfolio_trade_count: self.portfolio.trade_count(),
             final_positions: self.portfolio.position_quantities(),
         }
@@ -146,6 +151,7 @@ mod tests {
         assert_eq!(result.order_update_count, 4);
         assert_eq!(result.event_count, 5);
         assert_eq!(result.final_cash, 0);
+        assert_eq!(result.final_equity, 0);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
     }
@@ -178,6 +184,7 @@ mod tests {
         assert_eq!(result.order_update_count, 4);
         assert_eq!(result.event_count, 5);
         assert_eq!(result.final_cash, 0);
+        assert_eq!(result.final_equity, 0);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
     }

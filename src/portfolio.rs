@@ -70,6 +70,19 @@ impl Portfolio {
             .map(|(symbol, position)| (symbol.clone(), position.quantity))
             .collect()
     }
+
+    pub fn equity(&self, last_prices: &HashMap<String, i64>) -> i128 {
+        let position_value: i128 = self
+            .positions
+            .iter()
+            .map(|(symbol, position)| {
+                let last_price = last_prices.get(symbol).copied().unwrap_or(0);
+                position.quantity as i128 * last_price as i128
+            })
+            .sum();
+
+        self.cash + position_value
+    }
 }
 
 #[cfg(test)]
@@ -116,5 +129,33 @@ mod tests {
         let portfolio = Portfolio::new();
 
         assert_eq!(portfolio.position_quantity("BTCUSDT"), 0);
+    }
+
+    #[test]
+    fn portfolio_equity_marks_position_to_last_price() {
+        let mut portfolio = Portfolio::new();
+
+        portfolio.apply_fill("BTCUSDT", Side::Buy, 100_000, 1);
+
+        let mut last_prices = HashMap::new();
+        last_prices.insert("BTCUSDT".to_string(), 105_000);
+
+        assert_eq!(portfolio.cash(), -100_000);
+        assert_eq!(portfolio.position_quantity("BTCUSDT"), 1);
+        assert_eq!(portfolio.equity(&last_prices), 5_000);
+    }
+
+    #[test]
+    fn portfolio_equity_marks_short_position_to_last_price() {
+        let mut portfolio = Portfolio::new();
+
+        portfolio.apply_fill("BTCUSDT", Side::Sell, 100_000, 1);
+
+        let mut last_prices = HashMap::new();
+        last_prices.insert("BTCUSDT".to_string(), 95_000);
+
+        assert_eq!(portfolio.cash(), 100_000);
+        assert_eq!(portfolio.position_quantity("BTCUSDT"), -1);
+        assert_eq!(portfolio.equity(&last_prices), 5_000);
     }
 }
