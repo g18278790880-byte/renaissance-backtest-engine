@@ -4,26 +4,32 @@ mod model;
 mod order_book;
 mod strategy;
 
-use engine::Engine;
 use model::Tick;
-use strategy::ThresholdStrategy;
+use tokio::sync::mpsc;
 
-fn main() {
-    let mut engine = Engine::new();
+#[tokio::main]
+async fn main() {
+    let (tick_tx, mut tick_rx) = mpsc::channel::<Tick>(100);
 
-    let mut strategy = ThresholdStrategy::new(String::from("BTCUSDT"), 99_000, 101_000, 1);
+    let market_data_task = tokio::spawn(async move {
+        let tick = Tick {
+            symbol: String::from("BTCUSDT"),
+            price: 98_000,
+            quantity: 1,
+            timestamp: 1,
+        };
 
-    let tick = Tick {
-        symbol: String::from("BTCUSDT"),
-        price: 98_000,
-        quantity: 1,
-        timestamp: 1_717_000_000,
-    };
+        tick_tx.send(tick).await.unwrap();
 
-    let output_events = engine.process_market_tick(&tick, &mut strategy).unwrap();
+        println!("market data task: tick sent");
+    });
 
-    println!("output events: {:?}", output_events);
-    println!("order count: {}", engine.order_count());
-    println!("best bid: {:?}", engine.best_bid());
-    println!("best ask: {:?}", engine.best_ask());
+    let strategy_task = tokio::spawn(async move {
+        while let Some(tick) = tick_rx.recv().await {
+            println!("strategy task: tick received: {:?}", tick);
+        }
+    });
+
+    market_data_task.await.unwrap();
+    strategy_task.await.unwrap();
 }
