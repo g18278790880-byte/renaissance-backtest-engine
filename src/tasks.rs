@@ -2,19 +2,20 @@ use crate::engine::Engine;
 use crate::event::Event;
 use crate::market_data::MarketDataSimulator;
 use crate::model::{OrderRequest, Tick};
-use crate::strategy::{DemoCrossStrategy, Strategy};
+use crate::strategy::Strategy;
 use tokio::sync::mpsc;
 
 pub async fn market_data_task(simulator: MarketDataSimulator, tick_tx: mpsc::Sender<Tick>) {
     simulator.run(tick_tx).await;
 }
 
-pub async fn strategy_task(
+pub async fn strategy_task<S>(
+    mut strategy: S,
     mut tick_rx: mpsc::Receiver<Tick>,
     order_tx: mpsc::Sender<OrderRequest>,
-) {
-    let mut strategy = DemoCrossStrategy::new();
-
+) where
+    S: Strategy + Send + 'static,
+{
     while let Some(tick) = tick_rx.recv().await {
         println!("strategy task: tick received: {:?}", tick);
 
@@ -73,6 +74,7 @@ pub async fn event_logger_task(mut event_rx: mpsc::Receiver<Event>) {
 mod tests {
     use super::*;
     use crate::model::OrderStatus;
+    use crate::strategy::DemoCrossStrategy;
     use tokio::time::{timeout, Duration};
 
     async fn recv_event(event_rx: &mut mpsc::Receiver<Event>) -> Event {
@@ -90,7 +92,8 @@ mod tests {
 
         let simulator = MarketDataSimulator::demo_cross_ticks();
         let market_data_handle = tokio::spawn(market_data_task(simulator, tick_tx));
-        let strategy_handle = tokio::spawn(strategy_task(tick_rx, order_tx));
+        let strategy = DemoCrossStrategy::new();
+        let strategy_handle = tokio::spawn(strategy_task(strategy, tick_rx, order_tx));
         let execution_handle = tokio::spawn(execution_task(order_rx, event_tx));
 
         let first_event = recv_event(&mut event_rx).await;
