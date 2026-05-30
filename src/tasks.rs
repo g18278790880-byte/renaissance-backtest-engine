@@ -70,3 +70,74 @@ pub async fn event_logger_task(mut event_rx: mpsc::Receiver<Event>) {
 
     println!("event logger task: event channel closed");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::OrderStatus;
+    use tokio::time::{timeout, Duration};
+
+    async fn recv_event(event_rx: &mut mpsc::Receiver<Event>) -> Event {
+        timeout(Duration::from_secs(1), event_rx.recv())
+            .await
+            .expect("timed out waiting for event")
+            .expect("event channel closed before receiving expected event")
+    }
+
+    #[tokio::test]
+    async fn async_pipeline_generates_trade_and_order_updates() {
+        let (tick_tx, tick_rx) = mpsc::channel::<Tick>(10);
+        let (order_tx, order_rx) = mpsc::channel::<OrderRequest>(10);
+        let (event_tx, mut event_rx) = mpsc::channel::<Event>(10);
+
+        let market_data_handle = tokio::spawn(market_data_task(tick_tx));
+        let strategy_handle = tokio::spawn(strategy_task(tick_rx, order_tx));
+        let execution_handle = tokio::spawn(execution_task(order_rx, event_tx));
+
+        let first_event = recv_event(&mut event_rx).await;
+        let second_event = recv_event(&mut event_rx).await;
+        let third_event = recv_event(&mut event_rx).await;
+
+        match first_event {
+            Event::Trade(trade) => {
+                assert_eq!(trade.trade_id, 1);
+                assert_eq!(trade.buy_order_id, 1);
+                assert_eq!(trade.sell_order_id, 2);
+                assert_eq!(trade.symbol, "BTCUSDT");
+                assert_eq!(trade.price, 99_000);
+                assert_eq!(trade.quantity, 1);
+            }
+            _ => panic!("expected trade event"),
+        }
+
+        match second_event {
+            Event::OrderUpdate(update) => {
+                assert_eq!(update.order_id, 1);
+                assert_eq!(update.status, OrderStatus::PartiallyFilled);
+                assert_eq!(update.filled_quantity, 1);
+                assert_eq!(update.remaining_quantity, 1);
+            }
+            _ => panic!("expected buy order update event"),
+        }
+
+        match third_event {
+            Event::OrderUpdate(update) => {
+                assert_eq!(update.order_id, 2);
+                assert_eq!(update.status, OrderStatus::Filled);
+                assert_eq!(update.filled_quantity, 1);
+                assert_eq!(update.remaining_quantity, 0);
+            }
+            _ => panic!("expected sell order update event"),
+        }
+
+        market_data_handle.await.unwrap();
+        strategy_handle.await.unwrap();
+        execution_handle.await.unwrap();
+
+        let no_more_events = timeout(Duration::from_secs(1), event_rx.recv())
+            .await
+            .expect("timed out waiting for event channel to close");
+
+        assert!(no_more_events.is_none());
+    }
+}
