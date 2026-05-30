@@ -1,30 +1,14 @@
 use crate::engine::Engine;
 use crate::event::Event;
+use crate::market_data::MarketDataSimulator;
 use crate::model::{OrderRequest, Tick};
 use crate::strategy::{DemoCrossStrategy, Strategy};
 use tokio::sync::mpsc;
 
 pub async fn market_data_task(tick_tx: mpsc::Sender<Tick>) {
-    let ticks = vec![
-        Tick {
-            symbol: String::from("BTCUSDT"),
-            price: 100_000,
-            quantity: 1,
-            timestamp: 1,
-        },
-        Tick {
-            symbol: String::from("BTCUSDT"),
-            price: 99_000,
-            quantity: 1,
-            timestamp: 2,
-        },
-    ];
+    let simulator = MarketDataSimulator::demo_cross_ticks();
 
-    for tick in ticks {
-        tick_tx.send(tick).await.unwrap();
-    }
-
-    println!("market data task: all ticks sent");
+    simulator.run(tick_tx).await;
 }
 
 pub async fn strategy_task(
