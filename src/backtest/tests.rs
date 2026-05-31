@@ -278,3 +278,71 @@ fn calculate_max_drawdown_uses_initial_equity_as_starting_peak() {
 
     assert_eq!(calculate_max_drawdown(100_000, &equity_curve), 1_199);
 }
+
+#[test]
+fn backtest_result_can_be_converted_into_report() {
+    let ticks = demo_ticks();
+
+    let strategy = DemoCrossStrategy::new();
+    let mut backtest_engine = BacktestEngine::new_with_initial_cash_and_fee(strategy, 100_000, 10);
+
+    let result = backtest_engine.run(&ticks);
+    let report = BacktestReport::from(result);
+
+    assert_eq!(report.summary.tick_count, 2);
+    assert_eq!(report.summary.order_request_count, 2);
+    assert_eq!(report.summary.engine_trade_count, 1);
+    assert_eq!(report.summary.engine_order_update_count, 4);
+    assert_eq!(report.summary.engine_event_count, 5);
+    assert_eq!(report.summary.simulated_fill_count, 2);
+    assert_eq!(report.summary.portfolio_trade_count, 2);
+
+    assert_eq!(report.metrics.initial_cash, 100_000);
+    assert_eq!(report.metrics.final_cash, 98_801);
+    assert_eq!(report.metrics.final_equity, 98_801);
+    assert_eq!(report.metrics.total_pnl, -1_199);
+    assert_eq!(report.metrics.fee_paid, 199);
+    assert_eq!(report.metrics.max_drawdown, 1_199);
+
+    assert_eq!(report.positions.len(), 1);
+    assert_eq!(report.positions[0].symbol, "BTCUSDT");
+    assert_eq!(report.positions[0].quantity, 0);
+
+    assert_eq!(report.equity_curve.len(), 2);
+    assert_eq!(report.equity_curve[0].timestamp, 1);
+    assert_eq!(report.equity_curve[0].equity, 99_900);
+    assert_eq!(report.equity_curve[1].timestamp, 2);
+    assert_eq!(report.equity_curve[1].equity, 98_801);
+}
+
+#[test]
+fn backtest_report_sorts_positions_by_symbol() {
+    let mut final_positions = std::collections::HashMap::new();
+    final_positions.insert("ETHUSDT".to_string(), 2);
+    final_positions.insert("BTCUSDT".to_string(), 1);
+
+    let result = BacktestResult {
+        tick_count: 0,
+        order_request_count: 0,
+        trade_count: 0,
+        order_update_count: 0,
+        event_count: 0,
+        simulated_fill_count: 0,
+        initial_cash: 0,
+        final_cash: 0,
+        final_equity: 0,
+        total_pnl: 0,
+        fee_paid: 0,
+        max_drawdown: 0,
+        equity_curve: Vec::new(),
+        portfolio_trade_count: 0,
+        final_positions,
+    };
+
+    let report = BacktestReport::from(result);
+
+    assert_eq!(report.positions[0].symbol, "BTCUSDT");
+    assert_eq!(report.positions[0].quantity, 1);
+    assert_eq!(report.positions[1].symbol, "ETHUSDT");
+    assert_eq!(report.positions[1].quantity, 2);
+}

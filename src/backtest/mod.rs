@@ -1,4 +1,5 @@
 mod metrics;
+mod report;
 mod result;
 
 #[cfg(test)]
@@ -13,6 +14,7 @@ use crate::strategy::Strategy;
 use metrics::{calculate_fee, calculate_max_drawdown};
 use std::collections::HashMap;
 
+pub use report::{BacktestMetrics, BacktestPosition, BacktestReport, BacktestSummary};
 pub use result::{BacktestResult, EquityPoint};
 
 pub struct BacktestEngine<S>
