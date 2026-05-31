@@ -31,19 +31,16 @@ pub struct BacktestResult {
     pub final_positions: HashMap<String, i64>,
 }
 
-fn calculate_max_drawdown(equity_curve: &[EquityPoint]) -> i128 {
-    let mut peak: Option<i128> = None;
+fn calculate_max_drawdown(initial_equity: i128, equity_curve: &[EquityPoint]) -> i128 {
+    let mut peak = initial_equity;
     let mut max_drawdown = 0;
 
     for point in equity_curve {
-        let current_peak = match peak {
-            Some(existing_peak) if existing_peak >= point.equity => existing_peak,
-            _ => point.equity,
-        };
+        if point.equity > peak {
+            peak = point.equity;
+        }
 
-        peak = Some(current_peak);
-
-        let drawdown = current_peak - point.equity;
+        let drawdown = peak - point.equity;
 
         if drawdown > max_drawdown {
             max_drawdown = drawdown;
@@ -165,7 +162,7 @@ where
             final_equity,
             total_pnl,
             fee_paid: self.portfolio.fee_paid(),
-            max_drawdown: calculate_max_drawdown(&equity_curve),
+            max_drawdown: calculate_max_drawdown(initial_cash, &equity_curve),
             equity_curve,
             portfolio_trade_count: self.portfolio.trade_count(),
             final_positions: self.portfolio.position_quantities(),
@@ -297,7 +294,7 @@ mod tests {
     fn calculate_max_drawdown_returns_zero_for_empty_curve() {
         let equity_curve = vec![];
 
-        assert_eq!(calculate_max_drawdown(&equity_curve), 0);
+        assert_eq!(calculate_max_drawdown(100_000, &equity_curve), 0);
     }
 
     #[test]
@@ -317,7 +314,7 @@ mod tests {
             },
         ];
 
-        assert_eq!(calculate_max_drawdown(&equity_curve), 0);
+        assert_eq!(calculate_max_drawdown(0, &equity_curve), 0);
     }
 
     #[test]
@@ -345,7 +342,7 @@ mod tests {
             },
         ];
 
-        assert_eq!(calculate_max_drawdown(&equity_curve), 1_200);
+        assert_eq!(calculate_max_drawdown(0, &equity_curve), 1_200);
     }
 
     #[test]
@@ -434,6 +431,7 @@ mod tests {
         assert_eq!(result.final_cash, 98_801);
         assert_eq!(result.final_equity, 98_801);
         assert_eq!(result.total_pnl, -1_199);
+        assert_eq!(result.max_drawdown, 1_199);
 
         assert_eq!(result.simulated_fill_count, 2);
         assert_eq!(result.portfolio_trade_count, 2);
@@ -456,5 +454,21 @@ mod tests {
                 equity: 98_801,
             }
         );
+    }
+
+    #[test]
+    fn calculate_max_drawdown_uses_initial_equity_as_starting_peak() {
+        let equity_curve = vec![
+            EquityPoint {
+                timestamp: 1,
+                equity: 99_900,
+            },
+            EquityPoint {
+                timestamp: 2,
+                equity: 98_801,
+            },
+        ];
+
+        assert_eq!(calculate_max_drawdown(100_000, &equity_curve), 1_199);
     }
 }
