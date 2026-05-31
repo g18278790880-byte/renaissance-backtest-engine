@@ -6,6 +6,12 @@ use crate::portfolio::Portfolio;
 use crate::strategy::Strategy;
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EquityPoint {
+    pub timestamp: u64,
+    pub equity: i128,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct BacktestResult {
     pub tick_count: usize,
@@ -16,6 +22,7 @@ pub struct BacktestResult {
     pub simulated_fill_count: usize,
     pub final_cash: i128,
     pub final_equity: i128,
+    pub equity_curve: Vec<EquityPoint>,
     pub portfolio_trade_count: usize,
     pub final_positions: HashMap<String, i64>,
 }
@@ -48,6 +55,7 @@ where
         let mut event_count = 0;
         let mut simulated_fill_count = 0;
         let mut last_prices = HashMap::new();
+        let mut equity_curve = Vec::new();
 
         let mut sorted_ticks: Vec<&Tick> = ticks.iter().collect();
         sorted_ticks.sort_by_key(|tick| tick.timestamp);
@@ -85,6 +93,13 @@ where
                     }
                 }
             }
+
+            let equity = self.portfolio.equity(&last_prices);
+
+            equity_curve.push(EquityPoint {
+                timestamp: tick.timestamp,
+                equity,
+            });
         }
 
         BacktestResult {
@@ -96,6 +111,7 @@ where
             simulated_fill_count,
             final_cash: self.portfolio.cash(),
             final_equity: self.portfolio.equity(&last_prices),
+            equity_curve,
             portfolio_trade_count: self.portfolio.trade_count(),
             final_positions: self.portfolio.position_quantities(),
         }
@@ -141,6 +157,24 @@ mod tests {
         assert_eq!(result.final_equity, -1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
+
+        assert_eq!(result.equity_curve.len(), 2);
+
+        assert_eq!(
+            result.equity_curve[0],
+            EquityPoint {
+                timestamp: 1,
+                equity: 0,
+            }
+        );
+
+        assert_eq!(
+            result.equity_curve[1],
+            EquityPoint {
+                timestamp: 2,
+                equity: -1_000,
+            }
+        );
     }
 
     #[test]
@@ -176,5 +210,23 @@ mod tests {
         assert_eq!(result.final_equity, -1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
+
+        assert_eq!(result.equity_curve.len(), 2);
+
+        assert_eq!(
+            result.equity_curve[0],
+            EquityPoint {
+                timestamp: 1,
+                equity: 0,
+            }
+        );
+
+        assert_eq!(
+            result.equity_curve[1],
+            EquityPoint {
+                timestamp: 2,
+                equity: -1_000,
+            }
+        );
     }
 }
