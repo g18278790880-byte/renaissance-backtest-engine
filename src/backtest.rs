@@ -22,9 +22,32 @@ pub struct BacktestResult {
     pub simulated_fill_count: usize,
     pub final_cash: i128,
     pub final_equity: i128,
+    pub max_drawdown: i128,
     pub equity_curve: Vec<EquityPoint>,
     pub portfolio_trade_count: usize,
     pub final_positions: HashMap<String, i64>,
+}
+
+fn calculate_max_drawdown(equity_curve: &[EquityPoint]) -> i128 {
+    let mut peak: Option<i128> = None;
+    let mut max_drawdown = 0;
+
+    for point in equity_curve {
+        let current_peak = match peak {
+            Some(existing_peak) if existing_peak >= point.equity => existing_peak,
+            _ => point.equity,
+        };
+
+        peak = Some(current_peak);
+
+        let drawdown = current_peak - point.equity;
+
+        if drawdown > max_drawdown {
+            max_drawdown = drawdown;
+        }
+    }
+
+    max_drawdown
 }
 
 pub struct BacktestEngine<S>
@@ -111,6 +134,7 @@ where
             simulated_fill_count,
             final_cash: self.portfolio.cash(),
             final_equity: self.portfolio.equity(&last_prices),
+            max_drawdown: calculate_max_drawdown(&equity_curve),
             equity_curve,
             portfolio_trade_count: self.portfolio.trade_count(),
             final_positions: self.portfolio.position_quantities(),
@@ -155,6 +179,7 @@ mod tests {
         assert_eq!(result.simulated_fill_count, 2);
         assert_eq!(result.final_cash, -1_000);
         assert_eq!(result.final_equity, -1_000);
+        assert_eq!(result.max_drawdown, 1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
 
@@ -208,6 +233,7 @@ mod tests {
         assert_eq!(result.simulated_fill_count, 2);
         assert_eq!(result.final_cash, -1_000);
         assert_eq!(result.final_equity, -1_000);
+        assert_eq!(result.max_drawdown, 1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
 
@@ -228,5 +254,60 @@ mod tests {
                 equity: -1_000,
             }
         );
+    }
+
+    #[test]
+    fn calculate_max_drawdown_returns_zero_for_empty_curve() {
+        let equity_curve = vec![];
+
+        assert_eq!(calculate_max_drawdown(&equity_curve), 0);
+    }
+
+    #[test]
+    fn calculate_max_drawdown_returns_zero_when_equity_only_rises() {
+        let equity_curve = vec![
+            EquityPoint {
+                timestamp: 1,
+                equity: 0,
+            },
+            EquityPoint {
+                timestamp: 2,
+                equity: 500,
+            },
+            EquityPoint {
+                timestamp: 3,
+                equity: 1_000,
+            },
+        ];
+
+        assert_eq!(calculate_max_drawdown(&equity_curve), 0);
+    }
+
+    #[test]
+    fn calculate_max_drawdown_tracks_largest_drop_from_peak() {
+        let equity_curve = vec![
+            EquityPoint {
+                timestamp: 1,
+                equity: 0,
+            },
+            EquityPoint {
+                timestamp: 2,
+                equity: 1_000,
+            },
+            EquityPoint {
+                timestamp: 3,
+                equity: 400,
+            },
+            EquityPoint {
+                timestamp: 4,
+                equity: 800,
+            },
+            EquityPoint {
+                timestamp: 5,
+                equity: -200,
+            },
+        ];
+
+        assert_eq!(calculate_max_drawdown(&equity_curve), 1_200);
     }
 }
