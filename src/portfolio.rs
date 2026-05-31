@@ -9,6 +9,7 @@ pub struct Position {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Portfolio {
+    initial_cash: i128,
     cash: i128,
     positions: HashMap<String, Position>,
     trade_count: usize,
@@ -16,11 +17,20 @@ pub struct Portfolio {
 
 impl Portfolio {
     pub fn new() -> Self {
+        Self::with_initial_cash(0)
+    }
+
+    pub fn with_initial_cash(initial_cash: i128) -> Self {
         Self {
-            cash: 0,
+            initial_cash,
+            cash: initial_cash,
             positions: HashMap::new(),
             trade_count: 0,
         }
+    }
+
+    pub fn initial_cash(&self) -> i128 {
+        self.initial_cash
     }
 
     pub fn apply_fill(&mut self, symbol: &str, side: Side, price: i64, quantity: u64) {
@@ -157,5 +167,14 @@ mod tests {
         assert_eq!(portfolio.cash(), 100_000);
         assert_eq!(portfolio.position_quantity("BTCUSDT"), -1);
         assert_eq!(portfolio.equity(&last_prices), 5_000);
+    }
+
+    #[test]
+    fn portfolio_can_start_with_initial_cash() {
+        let portfolio = Portfolio::with_initial_cash(100_000);
+
+        assert_eq!(portfolio.initial_cash(), 100_000);
+        assert_eq!(portfolio.cash(), 100_000);
+        assert_eq!(portfolio.trade_count(), 0);
     }
 }

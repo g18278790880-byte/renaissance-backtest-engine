@@ -20,8 +20,10 @@ pub struct BacktestResult {
     pub order_update_count: usize,
     pub event_count: usize,
     pub simulated_fill_count: usize,
+    pub initial_cash: i128,
     pub final_cash: i128,
     pub final_equity: i128,
+    pub total_pnl: i128,
     pub max_drawdown: i128,
     pub equity_curve: Vec<EquityPoint>,
     pub portfolio_trade_count: usize,
@@ -64,10 +66,14 @@ where
     S: Strategy,
 {
     pub fn new(strategy: S) -> Self {
+        Self::new_with_initial_cash(strategy, 0)
+    }
+
+    pub fn new_with_initial_cash(strategy: S, initial_cash: i128) -> Self {
         Self {
             strategy,
             engine: Engine::new(),
-            portfolio: Portfolio::new(),
+            portfolio: Portfolio::with_initial_cash(initial_cash),
         }
     }
 
@@ -125,6 +131,10 @@ where
             });
         }
 
+        let initial_cash = self.portfolio.initial_cash();
+        let final_equity = self.portfolio.equity(&last_prices);
+        let total_pnl = final_equity - initial_cash;
+
         BacktestResult {
             tick_count: ticks.len(),
             order_request_count,
@@ -132,8 +142,10 @@ where
             order_update_count,
             event_count,
             simulated_fill_count,
+            initial_cash,
             final_cash: self.portfolio.cash(),
-            final_equity: self.portfolio.equity(&last_prices),
+            final_equity,
+            total_pnl,
             max_drawdown: calculate_max_drawdown(&equity_curve),
             equity_curve,
             portfolio_trade_count: self.portfolio.trade_count(),
@@ -177,8 +189,10 @@ mod tests {
         assert_eq!(result.event_count, 5);
 
         assert_eq!(result.simulated_fill_count, 2);
+        assert_eq!(result.initial_cash, 0);
         assert_eq!(result.final_cash, -1_000);
         assert_eq!(result.final_equity, -1_000);
+        assert_eq!(result.total_pnl, -1_000);
         assert_eq!(result.max_drawdown, 1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
@@ -231,8 +245,10 @@ mod tests {
         assert_eq!(result.event_count, 5);
 
         assert_eq!(result.simulated_fill_count, 2);
+        assert_eq!(result.initial_cash, 0);
         assert_eq!(result.final_cash, -1_000);
         assert_eq!(result.final_equity, -1_000);
+        assert_eq!(result.total_pnl, -1_000);
         assert_eq!(result.max_drawdown, 1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
@@ -309,5 +325,56 @@ mod tests {
         ];
 
         assert_eq!(calculate_max_drawdown(&equity_curve), 1_200);
+    }
+
+    #[test]
+    fn backtest_engine_calculates_total_pnl_from_initial_cash() {
+        let ticks = vec![
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 100_000,
+                quantity: 1,
+                timestamp: 1,
+            },
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 99_000,
+                quantity: 1,
+                timestamp: 2,
+            },
+        ];
+
+        let strategy = DemoCrossStrategy::new();
+        let mut backtest_engine = BacktestEngine::new_with_initial_cash(strategy, 100_000);
+
+        let result = backtest_engine.run(&ticks);
+
+        assert_eq!(result.initial_cash, 100_000);
+        assert_eq!(result.final_cash, 99_000);
+        assert_eq!(result.final_equity, 99_000);
+        assert_eq!(result.total_pnl, -1_000);
+        assert_eq!(result.max_drawdown, 1_000);
+
+        assert_eq!(result.simulated_fill_count, 2);
+        assert_eq!(result.portfolio_trade_count, 2);
+        assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
+
+        assert_eq!(result.equity_curve.len(), 2);
+
+        assert_eq!(
+            result.equity_curve[0],
+            EquityPoint {
+                timestamp: 1,
+                equity: 100_000,
+            }
+        );
+
+        assert_eq!(
+            result.equity_curve[1],
+            EquityPoint {
+                timestamp: 2,
+                equity: 99_000,
+            }
+        );
     }
 }
