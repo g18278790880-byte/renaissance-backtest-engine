@@ -1,6 +1,7 @@
 use crate::engine::Engine;
 use crate::event::Event;
-use crate::model::{OrderStatus, Side, Tick};
+use crate::fill_simulator::SimpleFillSimulator;
+use crate::model::Tick;
 use crate::portfolio::Portfolio;
 use crate::strategy::Strategy;
 use std::collections::HashMap;
@@ -12,6 +13,7 @@ pub struct BacktestResult {
     pub trade_count: usize,
     pub order_update_count: usize,
     pub event_count: usize,
+    pub simulated_fill_count: usize,
     pub final_cash: i128,
     pub final_equity: i128,
     pub portfolio_trade_count: usize,
@@ -25,7 +27,6 @@ where
     strategy: S,
     engine: Engine,
     portfolio: Portfolio,
-    order_sides: HashMap<u64, Side>,
 }
 
 impl<S> BacktestEngine<S>
@@ -37,7 +38,6 @@ where
             strategy,
             engine: Engine::new(),
             portfolio: Portfolio::new(),
-            order_sides: HashMap::new(),
         }
     }
 
@@ -46,6 +46,7 @@ where
         let mut trade_count = 0;
         let mut order_update_count = 0;
         let mut event_count = 0;
+        let mut simulated_fill_count = 0;
         let mut last_prices = HashMap::new();
 
         let mut sorted_ticks: Vec<&Tick> = ticks.iter().collect();
@@ -58,7 +59,12 @@ where
             order_request_count += order_requests.len();
 
             for request in order_requests {
-                let request_side = request.side;
+                if let Some(fill) = SimpleFillSimulator::fill_order(&request, tick) {
+                    simulated_fill_count += 1;
+
+                    self.portfolio
+                        .apply_fill(&fill.symbol, fill.side, fill.price, fill.quantity);
+                }
 
                 let events = self
                     .engine
@@ -69,33 +75,11 @@ where
 
                 for event in events {
                     match event {
-                        Event::Trade(trade) => {
+                        Event::Trade(_) => {
                             trade_count += 1;
-
-                            if self.order_sides.contains_key(&trade.buy_order_id) {
-                                self.portfolio.apply_fill(
-                                    &trade.symbol,
-                                    Side::Buy,
-                                    trade.price,
-                                    trade.quantity,
-                                );
-                            }
-
-                            if self.order_sides.contains_key(&trade.sell_order_id) {
-                                self.portfolio.apply_fill(
-                                    &trade.symbol,
-                                    Side::Sell,
-                                    trade.price,
-                                    trade.quantity,
-                                );
-                            }
                         }
-                        Event::OrderUpdate(update) => {
+                        Event::OrderUpdate(_) => {
                             order_update_count += 1;
-
-                            if update.status == OrderStatus::New {
-                                self.order_sides.insert(update.order_id, request_side);
-                            }
                         }
                         _ => {}
                     }
@@ -109,6 +93,7 @@ where
             trade_count,
             order_update_count,
             event_count,
+            simulated_fill_count,
             final_cash: self.portfolio.cash(),
             final_equity: self.portfolio.equity(&last_prices),
             portfolio_trade_count: self.portfolio.trade_count(),
@@ -150,8 +135,10 @@ mod tests {
         assert_eq!(result.trade_count, 1);
         assert_eq!(result.order_update_count, 4);
         assert_eq!(result.event_count, 5);
-        assert_eq!(result.final_cash, 0);
-        assert_eq!(result.final_equity, 0);
+
+        assert_eq!(result.simulated_fill_count, 2);
+        assert_eq!(result.final_cash, -1_000);
+        assert_eq!(result.final_equity, -1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
     }
@@ -183,8 +170,10 @@ mod tests {
         assert_eq!(result.trade_count, 1);
         assert_eq!(result.order_update_count, 4);
         assert_eq!(result.event_count, 5);
-        assert_eq!(result.final_cash, 0);
-        assert_eq!(result.final_equity, 0);
+
+        assert_eq!(result.simulated_fill_count, 2);
+        assert_eq!(result.final_cash, -1_000);
+        assert_eq!(result.final_equity, -1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
     }
