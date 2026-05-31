@@ -24,6 +24,7 @@ pub struct BacktestResult {
     pub final_cash: i128,
     pub final_equity: i128,
     pub total_pnl: i128,
+    pub fee_paid: i128,
     pub max_drawdown: i128,
     pub equity_curve: Vec<EquityPoint>,
     pub portfolio_trade_count: usize,
@@ -52,6 +53,10 @@ fn calculate_max_drawdown(equity_curve: &[EquityPoint]) -> i128 {
     max_drawdown
 }
 
+fn calculate_fee(price: i64, quantity: u64, fee_bps: u32) -> i128 {
+    price as i128 * quantity as i128 * fee_bps as i128 / 10_000
+}
+
 pub struct BacktestEngine<S>
 where
     S: Strategy,
@@ -59,6 +64,7 @@ where
     strategy: S,
     engine: Engine,
     portfolio: Portfolio,
+    fee_bps: u32,
 }
 
 impl<S> BacktestEngine<S>
@@ -66,14 +72,19 @@ where
     S: Strategy,
 {
     pub fn new(strategy: S) -> Self {
-        Self::new_with_initial_cash(strategy, 0)
+        Self::new_with_initial_cash_and_fee(strategy, 0, 0)
     }
 
     pub fn new_with_initial_cash(strategy: S, initial_cash: i128) -> Self {
+        Self::new_with_initial_cash_and_fee(strategy, initial_cash, 0)
+    }
+
+    pub fn new_with_initial_cash_and_fee(strategy: S, initial_cash: i128, fee_bps: u32) -> Self {
         Self {
             strategy,
             engine: Engine::new(),
             portfolio: Portfolio::with_initial_cash(initial_cash),
+            fee_bps,
         }
     }
 
@@ -99,8 +110,15 @@ where
                 if let Some(fill) = SimpleFillSimulator::fill_order(&request, tick) {
                     simulated_fill_count += 1;
 
-                    self.portfolio
-                        .apply_fill(&fill.symbol, fill.side, fill.price, fill.quantity);
+                    let fee = calculate_fee(fill.price, fill.quantity, self.fee_bps);
+
+                    self.portfolio.apply_fill_with_fee(
+                        &fill.symbol,
+                        fill.side,
+                        fill.price,
+                        fill.quantity,
+                        fee,
+                    );
                 }
 
                 let events = self
@@ -146,6 +164,7 @@ where
             final_cash: self.portfolio.cash(),
             final_equity,
             total_pnl,
+            fee_paid: self.portfolio.fee_paid(),
             max_drawdown: calculate_max_drawdown(&equity_curve),
             equity_curve,
             portfolio_trade_count: self.portfolio.trade_count(),
@@ -193,6 +212,7 @@ mod tests {
         assert_eq!(result.final_cash, -1_000);
         assert_eq!(result.final_equity, -1_000);
         assert_eq!(result.total_pnl, -1_000);
+        assert_eq!(result.fee_paid, 0);
         assert_eq!(result.max_drawdown, 1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
@@ -249,6 +269,7 @@ mod tests {
         assert_eq!(result.final_cash, -1_000);
         assert_eq!(result.final_equity, -1_000);
         assert_eq!(result.total_pnl, -1_000);
+        assert_eq!(result.fee_paid, 0);
         assert_eq!(result.max_drawdown, 1_000);
         assert_eq!(result.portfolio_trade_count, 2);
         assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
@@ -353,6 +374,7 @@ mod tests {
         assert_eq!(result.final_cash, 99_000);
         assert_eq!(result.final_equity, 99_000);
         assert_eq!(result.total_pnl, -1_000);
+        assert_eq!(result.fee_paid, 0);
         assert_eq!(result.max_drawdown, 1_000);
 
         assert_eq!(result.simulated_fill_count, 2);
@@ -374,6 +396,64 @@ mod tests {
             EquityPoint {
                 timestamp: 2,
                 equity: 99_000,
+            }
+        );
+    }
+
+    #[test]
+    fn backtest_engine_applies_fee_to_simulated_fills() {
+        let ticks = vec![
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 100_000,
+                quantity: 1,
+                timestamp: 1,
+            },
+            Tick {
+                symbol: "BTCUSDT".to_string(),
+                price: 99_000,
+                quantity: 1,
+                timestamp: 2,
+            },
+        ];
+
+        let strategy = DemoCrossStrategy::new();
+
+        // 10 bps = 0.10%
+        let mut backtest_engine =
+            BacktestEngine::new_with_initial_cash_and_fee(strategy, 100_000, 10);
+
+        let result = backtest_engine.run(&ticks);
+
+        assert_eq!(result.initial_cash, 100_000);
+
+        // buy fee: 100000 * 10 / 10000 = 100
+        // sell fee: 99000 * 10 / 10000 = 99
+        assert_eq!(result.fee_paid, 199);
+
+        assert_eq!(result.final_cash, 98_801);
+        assert_eq!(result.final_equity, 98_801);
+        assert_eq!(result.total_pnl, -1_199);
+
+        assert_eq!(result.simulated_fill_count, 2);
+        assert_eq!(result.portfolio_trade_count, 2);
+        assert_eq!(result.final_positions.get("BTCUSDT"), Some(&0));
+
+        assert_eq!(result.equity_curve.len(), 2);
+
+        assert_eq!(
+            result.equity_curve[0],
+            EquityPoint {
+                timestamp: 1,
+                equity: 99_900,
+            }
+        );
+
+        assert_eq!(
+            result.equity_curve[1],
+            EquityPoint {
+                timestamp: 2,
+                equity: 98_801,
             }
         );
     }

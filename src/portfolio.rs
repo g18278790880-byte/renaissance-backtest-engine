@@ -13,6 +13,7 @@ pub struct Portfolio {
     cash: i128,
     positions: HashMap<String, Position>,
     trade_count: usize,
+    fee_paid: i128,
 }
 
 impl Portfolio {
@@ -26,6 +27,7 @@ impl Portfolio {
             cash: initial_cash,
             positions: HashMap::new(),
             trade_count: 0,
+            fee_paid: 0,
         }
     }
 
@@ -34,6 +36,17 @@ impl Portfolio {
     }
 
     pub fn apply_fill(&mut self, symbol: &str, side: Side, price: i64, quantity: u64) {
+        self.apply_fill_with_fee(symbol, side, price, quantity, 0);
+    }
+
+    pub fn apply_fill_with_fee(
+        &mut self,
+        symbol: &str,
+        side: Side,
+        price: i64,
+        quantity: u64,
+        fee: i128,
+    ) {
         let quantity_i64 = quantity as i64;
         let notional = price as i128 * quantity as i128;
 
@@ -48,14 +61,15 @@ impl Portfolio {
         match side {
             Side::Buy => {
                 position.quantity += quantity_i64;
-                self.cash -= notional;
+                self.cash -= notional + fee;
             }
             Side::Sell => {
                 position.quantity -= quantity_i64;
-                self.cash += notional;
+                self.cash += notional - fee;
             }
         }
 
+        self.fee_paid += fee;
         self.trade_count += 1;
     }
 
@@ -92,6 +106,10 @@ impl Portfolio {
             .sum();
 
         self.cash + position_value
+    }
+
+    pub fn fee_paid(&self) -> i128 {
+        self.fee_paid
     }
 }
 
@@ -176,5 +194,29 @@ mod tests {
         assert_eq!(portfolio.initial_cash(), 100_000);
         assert_eq!(portfolio.cash(), 100_000);
         assert_eq!(portfolio.trade_count(), 0);
+    }
+
+    #[test]
+    fn portfolio_apply_buy_fill_with_fee_decreases_cash_by_notional_plus_fee() {
+        let mut portfolio = Portfolio::with_initial_cash(100_000);
+
+        portfolio.apply_fill_with_fee("BTCUSDT", Side::Buy, 100_000, 1, 100);
+
+        assert_eq!(portfolio.position_quantity("BTCUSDT"), 1);
+        assert_eq!(portfolio.cash(), -100);
+        assert_eq!(portfolio.fee_paid(), 100);
+        assert_eq!(portfolio.trade_count(), 1);
+    }
+
+    #[test]
+    fn portfolio_apply_sell_fill_with_fee_increases_cash_by_notional_minus_fee() {
+        let mut portfolio = Portfolio::with_initial_cash(0);
+
+        portfolio.apply_fill_with_fee("BTCUSDT", Side::Sell, 100_000, 1, 100);
+
+        assert_eq!(portfolio.position_quantity("BTCUSDT"), -1);
+        assert_eq!(portfolio.cash(), 99_900);
+        assert_eq!(portfolio.fee_paid(), 100);
+        assert_eq!(portfolio.trade_count(), 1);
     }
 }
